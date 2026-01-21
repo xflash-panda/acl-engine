@@ -18,7 +18,7 @@ const (
 type GeoSiteFormat string
 
 const (
-	GeoSiteFormatDAT    GeoSiteFormat = "dat"
+	GeoSiteFormatDAT  GeoSiteFormat = "dat"
 	GeoSiteFormatSing GeoSiteFormat = "db"
 )
 

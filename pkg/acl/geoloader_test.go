@@ -49,19 +49,19 @@ func TestFileGeoLoader_NonExistentFile(t *testing.T) {
 
 func TestFileGeoLoader_FormatDetection(t *testing.T) {
 	tests := []struct {
-		name             string
-		geoIPPath        string
-		geoIPFormat      GeoIPFormat
-		expectedIPFormat GeoIPFormat
-		geoSitePath      string
-		geoSiteFormat    GeoSiteFormat
+		name               string
+		geoIPPath          string
+		geoIPFormat        GeoIPFormat
+		expectedIPFormat   GeoIPFormat
+		geoSitePath        string
+		geoSiteFormat      GeoSiteFormat
 		expectedSiteFormat GeoSiteFormat
 	}{
 		{
-			name:             "auto detect dat",
-			geoIPPath:        "geoip.dat",
-			expectedIPFormat: GeoIPFormatDAT,
-			geoSitePath:      "geosite.dat",
+			name:               "auto detect dat",
+			geoIPPath:          "geoip.dat",
+			expectedIPFormat:   GeoIPFormatDAT,
+			geoSitePath:        "geosite.dat",
 			expectedSiteFormat: GeoSiteFormatDAT,
 		},
 		{
@@ -75,8 +75,8 @@ func TestFileGeoLoader_FormatDetection(t *testing.T) {
 			expectedIPFormat: GeoIPFormatMetaDB,
 		},
 		{
-			name:             "auto detect sing",
-			geoSitePath:      "geosite.db",
+			name:               "auto detect sing",
+			geoSitePath:        "geosite.db",
 			expectedSiteFormat: GeoSiteFormatSing,
 		},
 		{
@@ -135,26 +135,26 @@ func TestAutoGeoLoader_FormatNotSet(t *testing.T) {
 
 func TestAutoGeoLoader_FormatDetection(t *testing.T) {
 	tests := []struct {
-		name             string
-		geoIPPath        string
-		geoIPFormat      GeoIPFormat
-		expectedIPFormat GeoIPFormat
-		geoSitePath      string
-		geoSiteFormat    GeoSiteFormat
+		name               string
+		geoIPPath          string
+		geoIPFormat        GeoIPFormat
+		expectedIPFormat   GeoIPFormat
+		geoSitePath        string
+		geoSiteFormat      GeoSiteFormat
 		expectedSiteFormat GeoSiteFormat
 	}{
 		{
-			name:             "explicit format",
-			geoIPFormat:      GeoIPFormatMMDB,
-			expectedIPFormat: GeoIPFormatMMDB,
-			geoSiteFormat:    GeoSiteFormatSing,
+			name:               "explicit format",
+			geoIPFormat:        GeoIPFormatMMDB,
+			expectedIPFormat:   GeoIPFormatMMDB,
+			geoSiteFormat:      GeoSiteFormatSing,
 			expectedSiteFormat: GeoSiteFormatSing,
 		},
 		{
-			name:             "detect from path",
-			geoIPPath:        "/path/to/geoip.mmdb",
-			expectedIPFormat: GeoIPFormatMMDB,
-			geoSitePath:      "/path/to/geosite.db",
+			name:               "detect from path",
+			geoIPPath:          "/path/to/geoip.mmdb",
+			expectedIPFormat:   GeoIPFormatMMDB,
+			geoSitePath:        "/path/to/geosite.db",
 			expectedSiteFormat: GeoSiteFormatSing,
 		},
 		{
@@ -215,16 +215,16 @@ func TestAutoGeoLoader_PathGeneration(t *testing.T) {
 			expectedSitePath: "/data/geosite.dat",
 		},
 		{
-			name:             "from datadir mmdb",
-			dataDir:          "/data",
-			geoIPFormat:      GeoIPFormatMMDB,
-			expectedIPPath:   "/data/geoip.mmdb",
+			name:           "from datadir mmdb",
+			dataDir:        "/data",
+			geoIPFormat:    GeoIPFormatMMDB,
+			expectedIPPath: "/data/geoip.mmdb",
 		},
 		{
-			name:             "from datadir metadb",
-			dataDir:          "/data",
-			geoIPFormat:      GeoIPFormatMetaDB,
-			expectedIPPath:   "/data/geoip.metadb",
+			name:           "from datadir metadb",
+			dataDir:        "/data",
+			geoIPFormat:    GeoIPFormatMetaDB,
+			expectedIPPath: "/data/geoip.metadb",
 		},
 		{
 			name:             "from datadir sing",

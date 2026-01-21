@@ -72,8 +72,8 @@ func TestDefaultGeoIPFilename(t *testing.T) {
 		{GeoIPFormatDAT, "geoip.dat"},
 		{GeoIPFormatMMDB, "geoip.mmdb"},
 		{GeoIPFormatMetaDB, "geoip.metadb"},
-		{"", "geoip.dat"},           // default
-		{"unknown", "geoip.dat"},    // unknown format defaults to dat
+		{"", "geoip.dat"},        // default
+		{"unknown", "geoip.dat"}, // unknown format defaults to dat
 	}
 
 	for _, tt := range tests {
