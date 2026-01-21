@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/xflash-panda/acl-engine/pkg/acl/v2geo"
+	"github.com/xflash-panda/acl-engine/pkg/acl/geodat"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 )
@@ -118,8 +118,8 @@ func (e *CompilationError) Error() string {
 }
 
 type GeoLoader interface {
-	LoadGeoIP() (map[string]*v2geo.GeoIP, error)
-	LoadGeoSite() (map[string]*v2geo.GeoSite, error)
+	LoadGeoIP() (map[string]*geodat.GeoIP, error)
+	LoadGeoSite() (map[string]*geodat.GeoSite, error)
 }
 
 // Compile compiles TextRules into a CompiledRuleSet.

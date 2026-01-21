@@ -1,6 +1,7 @@
 package acl
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,31 +10,39 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xflash-panda/acl-engine/pkg/acl/v2geo"
+	"github.com/xflash-panda/acl-engine/pkg/acl/geodat"
+	"github.com/xflash-panda/acl-engine/pkg/acl/metadb"
+	"github.com/xflash-panda/acl-engine/pkg/acl/mmdb"
+	"github.com/xflash-panda/acl-engine/pkg/acl/singsite"
 )
 
 const (
-	DefaultGeoIPFilename   = "geoip.dat"
-	DefaultGeoSiteFilename = "geosite.dat"
-	DefaultGeoIPURL        = "https://cdn.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geoip.dat"
-	DefaultGeoSiteURL      = "https://cdn.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geosite.dat"
-	DefaultUpdateInterval  = 7 * 24 * time.Hour // 7 days
+	DefaultUpdateInterval = 7 * 24 * time.Hour // 7 days
+)
+
+var (
+	ErrGeoIPFormatNotSet   = errors.New("GeoIPFormat not set and cannot be detected from file path")
+	ErrGeoSiteFormatNotSet = errors.New("GeoSiteFormat not set and cannot be detected from file path")
+	ErrUnsupportedFormat   = errors.New("unsupported geo format")
 )
 
 // FileGeoLoader implements GeoLoader interface by loading geo data from files.
 type FileGeoLoader struct {
-	GeoIPPath   string
-	GeoSitePath string
+	GeoIPPath     string
+	GeoSitePath   string
+	GeoIPFormat   GeoIPFormat   // Optional, auto-detected from path if not set
+	GeoSiteFormat GeoSiteFormat // Optional, auto-detected from path if not set
 
 	geoIPOnce   sync.Once
-	geoIPMap    map[string]*v2geo.GeoIP
+	geoIPMap    map[string]*geodat.GeoIP
 	geoIPErr    error
 	geoSiteOnce sync.Once
-	geoSiteMap  map[string]*v2geo.GeoSite
+	geoSiteMap  map[string]*geodat.GeoSite
 	geoSiteErr  error
 }
 
 // NewFileGeoLoader creates a new FileGeoLoader with the given file paths.
+// Format is auto-detected from file extensions.
 func NewFileGeoLoader(geoIPPath, geoSitePath string) *FileGeoLoader {
 	return &FileGeoLoader{
 		GeoIPPath:   geoIPPath,
@@ -41,26 +50,50 @@ func NewFileGeoLoader(geoIPPath, geoSitePath string) *FileGeoLoader {
 	}
 }
 
+func (l *FileGeoLoader) getGeoIPFormat() GeoIPFormat {
+	if l.GeoIPFormat != "" {
+		return l.GeoIPFormat
+	}
+	return DetectGeoIPFormat(l.GeoIPPath)
+}
+
+func (l *FileGeoLoader) getGeoSiteFormat() GeoSiteFormat {
+	if l.GeoSiteFormat != "" {
+		return l.GeoSiteFormat
+	}
+	return DetectGeoSiteFormat(l.GeoSitePath)
+}
+
 // LoadGeoIP loads the GeoIP database from the configured file path.
 // The result is cached after the first call.
-func (l *FileGeoLoader) LoadGeoIP() (map[string]*v2geo.GeoIP, error) {
+func (l *FileGeoLoader) LoadGeoIP() (map[string]*geodat.GeoIP, error) {
 	l.geoIPOnce.Do(func() {
 		if l.GeoIPPath == "" {
 			return
 		}
-		l.geoIPMap, l.geoIPErr = v2geo.LoadGeoIP(l.GeoIPPath)
+		format := l.getGeoIPFormat()
+		if format == "" {
+			l.geoIPErr = ErrGeoIPFormatNotSet
+			return
+		}
+		l.geoIPMap, l.geoIPErr = loadGeoIP(l.GeoIPPath, format)
 	})
 	return l.geoIPMap, l.geoIPErr
 }
 
 // LoadGeoSite loads the GeoSite database from the configured file path.
 // The result is cached after the first call.
-func (l *FileGeoLoader) LoadGeoSite() (map[string]*v2geo.GeoSite, error) {
+func (l *FileGeoLoader) LoadGeoSite() (map[string]*geodat.GeoSite, error) {
 	l.geoSiteOnce.Do(func() {
 		if l.GeoSitePath == "" {
 			return
 		}
-		l.geoSiteMap, l.geoSiteErr = v2geo.LoadGeoSite(l.GeoSitePath)
+		format := l.getGeoSiteFormat()
+		if format == "" {
+			l.geoSiteErr = ErrGeoSiteFormatNotSet
+			return
+		}
+		l.geoSiteMap, l.geoSiteErr = loadGeoSite(l.GeoSitePath, format)
 	})
 	return l.geoSiteMap, l.geoSiteErr
 }
@@ -69,31 +102,37 @@ func (l *FileGeoLoader) LoadGeoSite() (map[string]*v2geo.GeoSite, error) {
 // Useful when you don't need GeoIP/GeoSite matching.
 type NilGeoLoader struct{}
 
-func (l *NilGeoLoader) LoadGeoIP() (map[string]*v2geo.GeoIP, error) {
+func (l *NilGeoLoader) LoadGeoIP() (map[string]*geodat.GeoIP, error) {
 	return nil, nil
 }
 
-func (l *NilGeoLoader) LoadGeoSite() (map[string]*v2geo.GeoSite, error) {
+func (l *NilGeoLoader) LoadGeoSite() (map[string]*geodat.GeoSite, error) {
 	return nil, nil
 }
 
 // AutoGeoLoader implements GeoLoader with automatic download support.
 // It downloads geo data files from CDN if they don't exist or are outdated.
 type AutoGeoLoader struct {
-	// GeoIPPath is the path to geoip.dat file.
-	// If empty, uses DefaultGeoIPFilename in DataDir.
+	// GeoIPPath is the full path to the geoip file.
+	// If empty, uses DataDir + default filename based on GeoIPFormat.
 	GeoIPPath string
-	// GeoSitePath is the path to geosite.dat file.
-	// If empty, uses DefaultGeoSiteFilename in DataDir.
+	// GeoSitePath is the full path to the geosite file.
+	// If empty, uses DataDir + default filename based on GeoSiteFormat.
 	GeoSitePath string
 	// DataDir is the directory to store downloaded files.
-	// If empty, uses current directory.
+	// Required when GeoIPPath/GeoSitePath is not set.
 	DataDir string
-	// GeoIPURL is the download URL for geoip.dat.
-	// If empty, uses DefaultGeoIPURL.
+	// GeoIPFormat specifies the GeoIP file format.
+	// If empty, auto-detected from GeoIPPath extension.
+	GeoIPFormat GeoIPFormat
+	// GeoSiteFormat specifies the GeoSite file format.
+	// If empty, auto-detected from GeoSitePath extension.
+	GeoSiteFormat GeoSiteFormat
+	// GeoIPURL is the download URL for the geoip file.
+	// Required when auto-downloading is needed.
 	GeoIPURL string
-	// GeoSiteURL is the download URL for geosite.dat.
-	// If empty, uses DefaultGeoSiteURL.
+	// GeoSiteURL is the download URL for the geosite file.
+	// Required when auto-downloading is needed.
 	GeoSiteURL string
 	// UpdateInterval is the interval to check for updates.
 	// If zero, uses DefaultUpdateInterval (7 days).
@@ -101,17 +140,9 @@ type AutoGeoLoader struct {
 	// Logger is called when downloading or errors occur (optional).
 	Logger func(format string, args ...interface{})
 
-	geoIPMap   map[string]*v2geo.GeoIP
-	geoSiteMap map[string]*v2geo.GeoSite
+	geoIPMap   map[string]*geodat.GeoIP
+	geoSiteMap map[string]*geodat.GeoSite
 	mu         sync.Mutex
-}
-
-// NewAutoGeoLoader creates an AutoGeoLoader with default settings.
-// dataDir is the directory to store downloaded geo data files.
-func NewAutoGeoLoader(dataDir string) *AutoGeoLoader {
-	return &AutoGeoLoader{
-		DataDir: dataDir,
-	}
 }
 
 func (l *AutoGeoLoader) log(format string, args ...interface{}) {
@@ -120,38 +151,48 @@ func (l *AutoGeoLoader) log(format string, args ...interface{}) {
 	}
 }
 
+func (l *AutoGeoLoader) getGeoIPFormat() GeoIPFormat {
+	if l.GeoIPFormat != "" {
+		return l.GeoIPFormat
+	}
+	if l.GeoIPPath != "" {
+		return DetectGeoIPFormat(l.GeoIPPath)
+	}
+	return ""
+}
+
+func (l *AutoGeoLoader) getGeoSiteFormat() GeoSiteFormat {
+	if l.GeoSiteFormat != "" {
+		return l.GeoSiteFormat
+	}
+	if l.GeoSitePath != "" {
+		return DetectGeoSiteFormat(l.GeoSitePath)
+	}
+	return ""
+}
+
 func (l *AutoGeoLoader) getGeoIPPath() string {
 	if l.GeoIPPath != "" {
 		return l.GeoIPPath
 	}
+	format := l.getGeoIPFormat()
+	filename := DefaultGeoIPFilename(format)
 	if l.DataDir != "" {
-		return filepath.Join(l.DataDir, DefaultGeoIPFilename)
+		return filepath.Join(l.DataDir, filename)
 	}
-	return DefaultGeoIPFilename
+	return filename
 }
 
 func (l *AutoGeoLoader) getGeoSitePath() string {
 	if l.GeoSitePath != "" {
 		return l.GeoSitePath
 	}
+	format := l.getGeoSiteFormat()
+	filename := DefaultGeoSiteFilename(format)
 	if l.DataDir != "" {
-		return filepath.Join(l.DataDir, DefaultGeoSiteFilename)
+		return filepath.Join(l.DataDir, filename)
 	}
-	return DefaultGeoSiteFilename
-}
-
-func (l *AutoGeoLoader) getGeoIPURL() string {
-	if l.GeoIPURL != "" {
-		return l.GeoIPURL
-	}
-	return DefaultGeoIPURL
-}
-
-func (l *AutoGeoLoader) getGeoSiteURL() string {
-	if l.GeoSiteURL != "" {
-		return l.GeoSiteURL
-	}
-	return DefaultGeoSiteURL
+	return filename
 }
 
 func (l *AutoGeoLoader) getUpdateInterval() time.Duration {
@@ -173,6 +214,9 @@ func (l *AutoGeoLoader) shouldDownload(filename string) bool {
 }
 
 func (l *AutoGeoLoader) download(filename, url string, checkFunc func(string) error) error {
+	if url == "" {
+		return fmt.Errorf("download URL not configured for %s", filename)
+	}
 	l.log("Downloading %s from %s", filename, url)
 
 	// Ensure directory exists
@@ -229,7 +273,7 @@ func (l *AutoGeoLoader) download(filename, url string, checkFunc func(string) er
 }
 
 // LoadGeoIP loads the GeoIP database, downloading if necessary.
-func (l *AutoGeoLoader) LoadGeoIP() (map[string]*v2geo.GeoIP, error) {
+func (l *AutoGeoLoader) LoadGeoIP() (map[string]*geodat.GeoIP, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -237,12 +281,17 @@ func (l *AutoGeoLoader) LoadGeoIP() (map[string]*v2geo.GeoIP, error) {
 		return l.geoIPMap, nil
 	}
 
+	format := l.getGeoIPFormat()
+	if format == "" {
+		return nil, ErrGeoIPFormatNotSet
+	}
+
 	filename := l.getGeoIPPath()
 
 	// Try to download if needed
 	if l.shouldDownload(filename) {
-		err := l.download(filename, l.getGeoIPURL(), func(f string) error {
-			_, err := v2geo.LoadGeoIP(f)
+		err := l.download(filename, l.GeoIPURL, func(f string) error {
+			_, err := loadGeoIP(f, format)
 			return err
 		})
 		if err != nil {
@@ -253,7 +302,7 @@ func (l *AutoGeoLoader) LoadGeoIP() (map[string]*v2geo.GeoIP, error) {
 		}
 	}
 
-	m, err := v2geo.LoadGeoIP(filename)
+	m, err := loadGeoIP(filename, format)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +311,7 @@ func (l *AutoGeoLoader) LoadGeoIP() (map[string]*v2geo.GeoIP, error) {
 }
 
 // LoadGeoSite loads the GeoSite database, downloading if necessary.
-func (l *AutoGeoLoader) LoadGeoSite() (map[string]*v2geo.GeoSite, error) {
+func (l *AutoGeoLoader) LoadGeoSite() (map[string]*geodat.GeoSite, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -270,12 +319,17 @@ func (l *AutoGeoLoader) LoadGeoSite() (map[string]*v2geo.GeoSite, error) {
 		return l.geoSiteMap, nil
 	}
 
+	format := l.getGeoSiteFormat()
+	if format == "" {
+		return nil, ErrGeoSiteFormatNotSet
+	}
+
 	filename := l.getGeoSitePath()
 
 	// Try to download if needed
 	if l.shouldDownload(filename) {
-		err := l.download(filename, l.getGeoSiteURL(), func(f string) error {
-			_, err := v2geo.LoadGeoSite(f)
+		err := l.download(filename, l.GeoSiteURL, func(f string) error {
+			_, err := loadGeoSite(f, format)
 			return err
 		})
 		if err != nil {
@@ -286,10 +340,36 @@ func (l *AutoGeoLoader) LoadGeoSite() (map[string]*v2geo.GeoSite, error) {
 		}
 	}
 
-	m, err := v2geo.LoadGeoSite(filename)
+	m, err := loadGeoSite(filename, format)
 	if err != nil {
 		return nil, err
 	}
 	l.geoSiteMap = m
 	return m, nil
+}
+
+// loadGeoIP loads GeoIP data from a file based on the specified format.
+func loadGeoIP(filename string, format GeoIPFormat) (map[string]*geodat.GeoIP, error) {
+	switch format {
+	case GeoIPFormatDAT:
+		return geodat.LoadGeoIP(filename)
+	case GeoIPFormatMMDB:
+		return mmdb.LoadGeoIP(filename)
+	case GeoIPFormatMetaDB:
+		return metadb.LoadGeoIP(filename)
+	default:
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedFormat, format)
+	}
+}
+
+// loadGeoSite loads GeoSite data from a file based on the specified format.
+func loadGeoSite(filename string, format GeoSiteFormat) (map[string]*geodat.GeoSite, error) {
+	switch format {
+	case GeoSiteFormatDAT:
+		return geodat.LoadGeoSite(filename)
+	case GeoSiteFormatSing:
+		return singsite.LoadGeoSite(filename)
+	default:
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedFormat, format)
+	}
 }

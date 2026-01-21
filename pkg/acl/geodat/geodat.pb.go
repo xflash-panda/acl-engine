@@ -4,7 +4,7 @@
 // 	protoc        v4.24.4
 // source: v2geo.proto
 
-package v2geo
+package geodat
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"

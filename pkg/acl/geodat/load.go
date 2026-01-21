@@ -1,4 +1,4 @@
-package v2geo
+package geodat
 
 import (
 	"os"

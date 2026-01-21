@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/xflash-panda/acl-engine/pkg/acl/v2geo"
+	"github.com/xflash-panda/acl-engine/pkg/acl/geodat"
 )
 
 var _ hostMatcher = (*geoipMatcher)(nil)
@@ -59,7 +59,7 @@ func (m *geoipMatcher) Match(host HostInfo) bool {
 	return m.Inverse
 }
 
-func newGeoIPMatcher(list *v2geo.GeoIP) (*geoipMatcher, error) {
+func newGeoIPMatcher(list *geodat.GeoIP) (*geoipMatcher, error) {
 	n4 := make([]*net.IPNet, 0)
 	n6 := make([]*net.IPNet, 0)
 	for _, cidr := range list.Cidr {
@@ -160,17 +160,17 @@ func (m *geositeMatcher) Match(host HostInfo) bool {
 	return false
 }
 
-func newGeositeMatcher(list *v2geo.GeoSite, attrs []string) (*geositeMatcher, error) {
+func newGeositeMatcher(list *geodat.GeoSite, attrs []string) (*geositeMatcher, error) {
 	domains := make([]geositeDomain, len(list.Domain))
 	for i, domain := range list.Domain {
 		switch domain.Type {
-		case v2geo.Domain_Plain:
+		case geodat.Domain_Plain:
 			domains[i] = geositeDomain{
 				Type:  geositeDomainPlain,
 				Value: domain.Value,
 				Attrs: domainAttributeToMap(domain.Attribute),
 			}
-		case v2geo.Domain_Regex:
+		case geodat.Domain_Regex:
 			regex, err := regexp.Compile(domain.Value)
 			if err != nil {
 				return nil, err
@@ -180,13 +180,13 @@ func newGeositeMatcher(list *v2geo.GeoSite, attrs []string) (*geositeMatcher, er
 				Regex: regex,
 				Attrs: domainAttributeToMap(domain.Attribute),
 			}
-		case v2geo.Domain_Full:
+		case geodat.Domain_Full:
 			domains[i] = geositeDomain{
 				Type:  geositeDomainFull,
 				Value: domain.Value,
 				Attrs: domainAttributeToMap(domain.Attribute),
 			}
-		case v2geo.Domain_RootDomain:
+		case geodat.Domain_RootDomain:
 			domains[i] = geositeDomain{
 				Type:  geositeDomainRoot,
 				Value: domain.Value,
@@ -202,7 +202,7 @@ func newGeositeMatcher(list *v2geo.GeoSite, attrs []string) (*geositeMatcher, er
 	}, nil
 }
 
-func domainAttributeToMap(attrs []*v2geo.Domain_Attribute) map[string]bool {
+func domainAttributeToMap(attrs []*geodat.Domain_Attribute) map[string]bool {
 	m := make(map[string]bool)
 	for _, attr := range attrs {
 		// Supposedly there are also int attributes,
