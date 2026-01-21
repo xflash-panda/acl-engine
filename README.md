@@ -5,7 +5,7 @@ A high-performance Access Control List (ACL) engine for Go, extracted from [Hyst
 ## Features
 
 - **Multiple matching strategies**: IP, CIDR, domain (exact/wildcard/suffix)
-- **GeoIP/GeoSite support**: Compatible with v2ray geo data format with auto-download
+- **GeoIP/GeoSite support**: Multiple formats (DAT, MMDB, MetaDB, sing-geosite)
 - **Protocol & port filtering**: TCP/UDP with port ranges
 - **IP hijacking**: Redirect matched traffic to different IPs
 - **LRU caching**: High-performance match result caching
@@ -55,8 +55,14 @@ block(all, tcp/22)
         "block":  "BLOCK",
     }
 
-    // Create GeoLoader with auto-download (recommended)
-    geoLoader := acl.NewAutoGeoLoader("./data")
+    // Create GeoLoader with MMDB format (recommended)
+    geoLoader := &acl.AutoGeoLoader{
+        DataDir:       "./data",
+        GeoIPFormat:   acl.GeoIPFormatMMDB,
+        GeoIPURL:      acl.MetaCubeXGeoIPMMDBURL,
+        GeoSiteFormat: acl.GeoSiteFormatDAT,
+        GeoSiteURL:    acl.MetaCubeXGeoSiteDatURL,
+    }
 
     // Compile rules
     compiled, err := acl.Compile(rules, outbounds, 1024, geoLoader)
@@ -135,48 +141,78 @@ proxy(all)
 
 ## GeoIP/GeoSite Usage
 
-The library provides three GeoLoader implementations:
+### Supported Formats
 
-### 1. AutoGeoLoader (Recommended)
+| Format | GeoIP | GeoSite | Extension | Description |
+|--------|-------|---------|-----------|-------------|
+| DAT | ✓ | ✓ | `.dat` | V2Ray protobuf format |
+| MMDB | ✓ | ✗ | `.mmdb` | MaxMind database format |
+| MetaDB | ✓ | ✗ | `.metadb` | Clash Meta format |
+| Sing | ✗ | ✓ | `.db` | sing-geosite binary format |
 
-Automatically downloads and updates geo data files from CDN:
+### GeoLoader Implementations
+
+#### 1. AutoGeoLoader (Recommended)
+
+Automatically downloads and updates geo data files:
 
 ```go
-// Basic usage - auto download to ./data directory
-geoLoader := acl.NewAutoGeoLoader("./data")
-
-// Advanced configuration
+// Using MMDB for GeoIP (smaller, faster)
 geoLoader := &acl.AutoGeoLoader{
-    DataDir:        "./data",                    // Directory to store files
-    UpdateInterval: 7 * 24 * time.Hour,          // Update interval (default: 7 days)
+    DataDir:       "./data",
+    GeoIPFormat:   acl.GeoIPFormatMMDB,
+    GeoIPURL:      acl.MetaCubeXGeoIPMMDBURL,
+    GeoSiteFormat: acl.GeoSiteFormatDAT,
+    GeoSiteURL:    acl.MetaCubeXGeoSiteDatURL,
+    UpdateInterval: 7 * 24 * time.Hour,  // Update interval (default: 7 days)
     Logger: func(format string, args ...interface{}) {
-        log.Printf(format, args...)              // Optional: log download progress
+        log.Printf(format, args...)  // Optional: log download progress
     },
 }
 
-// Custom download URLs (e.g., use mirror)
+// Using MetaDB for GeoIP (supports multiple country codes per IP)
 geoLoader := &acl.AutoGeoLoader{
-    DataDir:    "./data",
-    GeoIPURL:   "https://your-mirror.com/geoip.dat",
-    GeoSiteURL: "https://your-mirror.com/geosite.dat",
+    DataDir:       "./data",
+    GeoIPFormat:   acl.GeoIPFormatMetaDB,
+    GeoIPURL:      acl.MetaCubeXGeoIPMetaDBURL,
+    GeoSiteFormat: acl.GeoSiteFormatSing,
+    GeoSiteURL:    acl.MetaCubeXGeoSiteDBURL,
+}
+
+// Using DAT format (V2Ray compatible)
+geoLoader := &acl.AutoGeoLoader{
+    DataDir:       "./data",
+    GeoIPFormat:   acl.GeoIPFormatDAT,
+    GeoIPURL:      acl.MetaCubeXGeoIPDatURL,
+    GeoSiteFormat: acl.GeoSiteFormatDAT,
+    GeoSiteURL:    acl.MetaCubeXGeoSiteDatURL,
 }
 ```
 
 **Features:**
-- Auto downloads `geoip.dat` and `geosite.dat` if not exist
-- Auto updates files every 7 days (configurable)
+- Auto downloads geo files if not exist
+- Auto updates files based on UpdateInterval (default: 7 days)
 - Falls back to existing files if download fails
-- Downloads from CDN: `cdn.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/`
+- Format auto-detection from file extension
 
-### 2. FileGeoLoader
+#### 2. FileGeoLoader
 
 Load from local files only (no auto-download):
 
 ```go
-geoLoader := acl.NewFileGeoLoader("./geoip.dat", "./geosite.dat")
+// Format is auto-detected from file extension
+geoLoader := acl.NewFileGeoLoader("./geoip.mmdb", "./geosite.dat")
+
+// Or with explicit format
+geoLoader := &acl.FileGeoLoader{
+    GeoIPPath:     "./custom.mmdb",
+    GeoIPFormat:   acl.GeoIPFormatMMDB,
+    GeoSitePath:   "./custom.dat",
+    GeoSiteFormat: acl.GeoSiteFormatDAT,
+}
 ```
 
-### 3. NilGeoLoader
+#### 3. NilGeoLoader
 
 For rules that don't use GeoIP/GeoSite:
 
@@ -184,18 +220,34 @@ For rules that don't use GeoIP/GeoSite:
 geoLoader := &acl.NilGeoLoader{}
 ```
 
+### Available URL Constants
+
+```go
+// MetaCubeX CDN URLs
+acl.MetaCubeXGeoIPDatURL    // geoip.dat
+acl.MetaCubeXGeoIPMMDBURL   // country.mmdb
+acl.MetaCubeXGeoIPMetaDBURL // geoip.metadb
+acl.MetaCubeXGeoSiteDatURL  // geosite.dat
+acl.MetaCubeXGeoSiteDBURL   // geosite.db
+```
+
 ### Manual Download
 
 If you prefer to download geo data manually:
 
 ```bash
-# Download from Loyalsoldier (recommended, updated daily)
-wget https://cdn.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geoip.dat
-wget https://cdn.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geosite.dat
+# MMDB format (recommended for GeoIP)
+wget https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb
 
-# Or from v2fly official
-wget https://github.com/v2fly/geoip/releases/latest/download/geoip.dat
-wget https://github.com/v2fly/domain-list-community/releases/latest/download/dlc.dat -O geosite.dat
+# DAT format (V2Ray compatible)
+wget https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat
+wget https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat
+
+# MetaDB format
+wget https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb
+
+# sing-geosite format
+wget https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.db
 ```
 
 ### GeoIP Country Codes
@@ -256,10 +308,25 @@ const (
     ProtocolUDP
 )
 
+// GeoIP format types
+type GeoIPFormat string
+const (
+    GeoIPFormatDAT    GeoIPFormat = "dat"
+    GeoIPFormatMMDB   GeoIPFormat = "mmdb"
+    GeoIPFormatMetaDB GeoIPFormat = "metadb"
+)
+
+// GeoSite format types
+type GeoSiteFormat string
+const (
+    GeoSiteFormatDAT  GeoSiteFormat = "dat"
+    GeoSiteFormatSing GeoSiteFormat = "db"
+)
+
 // GeoLoader interface for loading geo databases
 type GeoLoader interface {
-    LoadGeoIP() (map[string]*v2geo.GeoIP, error)
-    LoadGeoSite() (map[string]*v2geo.GeoSite, error)
+    LoadGeoIP() (map[string]*geodat.GeoIP, error)
+    LoadGeoSite() (map[string]*geodat.GeoSite, error)
 }
 ```
 
@@ -278,8 +345,15 @@ func Compile[O Outbound](
 ) (CompiledRuleSet[O], error)
 
 // Create GeoLoaders
-func NewAutoGeoLoader(dataDir string) *AutoGeoLoader  // With auto-download
-func NewFileGeoLoader(geoIPPath, geoSitePath string) *FileGeoLoader  // File only
+func NewFileGeoLoader(geoIPPath, geoSitePath string) *FileGeoLoader
+
+// Format detection
+func DetectGeoIPFormat(path string) GeoIPFormat
+func DetectGeoSiteFormat(path string) GeoSiteFormat
+
+// Default filenames
+func DefaultGeoIPFilename(format GeoIPFormat) string
+func DefaultGeoSiteFilename(format GeoSiteFormat) string
 ```
 
 ### CompiledRuleSet
