@@ -8,7 +8,7 @@ require (
 	github.com/oschwald/maxminddb-golang v1.13.1
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/net v0.24.0
-	google.golang.org/protobuf v1.34.2
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
