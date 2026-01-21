@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/xflash-panda/acl-engine/v2geo"
+	"github.com/xflash-panda/acl-engine/pkg/acl/v2geo"
 )
 
 var _ hostMatcher = (*geoipMatcher)(nil)

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/xflash-panda/acl-engine/v2geo"
+	"github.com/xflash-panda/acl-engine/pkg/acl/v2geo"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 )

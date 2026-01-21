@@ -3,7 +3,7 @@ package acl
 import (
 	"sync"
 
-	"github.com/xflash-panda/acl-engine/v2geo"
+	"github.com/xflash-panda/acl-engine/pkg/acl/v2geo"
 )
 
 // FileGeoLoader implements GeoLoader interface by loading geo data from files.
