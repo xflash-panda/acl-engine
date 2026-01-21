@@ -5,7 +5,7 @@ A high-performance Access Control List (ACL) engine for Go, extracted from [Hyst
 ## Features
 
 - **Multiple matching strategies**: IP, CIDR, domain (exact/wildcard/suffix)
-- **GeoIP/GeoSite support**: Compatible with v2ray geo data format
+- **GeoIP/GeoSite support**: Compatible with v2ray geo data format with auto-download
 - **Protocol & port filtering**: TCP/UDP with port ranges
 - **IP hijacking**: Redirect matched traffic to different IPs
 - **LRU caching**: High-performance match result caching
@@ -55,10 +55,8 @@ block(all, tcp/22)
         "block":  "BLOCK",
     }
 
-    // Create GeoLoader (optional, for geoip:/geosite: rules)
-    geoLoader := acl.NewFileGeoLoader("geoip.dat", "geosite.dat")
-    // Or use NilGeoLoader if you don't need geo matching:
-    // geoLoader := &acl.NilGeoLoader{}
+    // Create GeoLoader with auto-download (recommended)
+    geoLoader := acl.NewAutoGeoLoader("./data")
 
     // Compile rules
     compiled, err := acl.Compile(rules, outbounds, 1024, geoLoader)
@@ -135,6 +133,109 @@ direct(all, udp/53, 127.0.0.1)
 proxy(all)
 ```
 
+## GeoIP/GeoSite Usage
+
+The library provides three GeoLoader implementations:
+
+### 1. AutoGeoLoader (Recommended)
+
+Automatically downloads and updates geo data files from CDN:
+
+```go
+// Basic usage - auto download to ./data directory
+geoLoader := acl.NewAutoGeoLoader("./data")
+
+// Advanced configuration
+geoLoader := &acl.AutoGeoLoader{
+    DataDir:        "./data",                    // Directory to store files
+    UpdateInterval: 7 * 24 * time.Hour,          // Update interval (default: 7 days)
+    Logger: func(format string, args ...interface{}) {
+        log.Printf(format, args...)              // Optional: log download progress
+    },
+}
+
+// Custom download URLs (e.g., use mirror)
+geoLoader := &acl.AutoGeoLoader{
+    DataDir:    "./data",
+    GeoIPURL:   "https://your-mirror.com/geoip.dat",
+    GeoSiteURL: "https://your-mirror.com/geosite.dat",
+}
+```
+
+**Features:**
+- Auto downloads `geoip.dat` and `geosite.dat` if not exist
+- Auto updates files every 7 days (configurable)
+- Falls back to existing files if download fails
+- Downloads from CDN: `cdn.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/`
+
+### 2. FileGeoLoader
+
+Load from local files only (no auto-download):
+
+```go
+geoLoader := acl.NewFileGeoLoader("./geoip.dat", "./geosite.dat")
+```
+
+### 3. NilGeoLoader
+
+For rules that don't use GeoIP/GeoSite:
+
+```go
+geoLoader := &acl.NilGeoLoader{}
+```
+
+### Manual Download
+
+If you prefer to download geo data manually:
+
+```bash
+# Download from Loyalsoldier (recommended, updated daily)
+wget https://cdn.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geoip.dat
+wget https://cdn.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geosite.dat
+
+# Or from v2fly official
+wget https://github.com/v2fly/geoip/releases/latest/download/geoip.dat
+wget https://github.com/v2fly/domain-list-community/releases/latest/download/dlc.dat -O geosite.dat
+```
+
+### GeoIP Country Codes
+
+Common country codes for `geoip:` rules:
+
+| Code | Country |
+|------|---------|
+| `cn` | China |
+| `us` | United States |
+| `jp` | Japan |
+| `hk` | Hong Kong |
+| `tw` | Taiwan |
+| `sg` | Singapore |
+| `private` | Private/LAN IPs |
+
+### GeoSite Categories
+
+Common categories for `geosite:` rules:
+
+| Category | Description |
+|----------|-------------|
+| `google` | Google services |
+| `youtube` | YouTube |
+| `facebook` | Facebook/Meta |
+| `twitter` | Twitter/X |
+| `netflix` | Netflix |
+| `telegram` | Telegram |
+| `cn` | China mainland sites |
+| `geolocation-cn` | Sites with servers in China |
+| `geolocation-!cn` | Sites without servers in China |
+| `category-ads` | Ad domains |
+| `category-ads-all` | All ad domains |
+
+**With attributes:**
+```
+# Only match Google domains that have @cn attribute
+proxy(geosite:google@cn)
+```
+
 ## API Reference
 
 ### Types
@@ -176,8 +277,9 @@ func Compile[O Outbound](
     geoLoader GeoLoader,
 ) (CompiledRuleSet[O], error)
 
-// Create a file-based GeoLoader
-func NewFileGeoLoader(geoIPPath, geoSitePath string) *FileGeoLoader
+// Create GeoLoaders
+func NewAutoGeoLoader(dataDir string) *AutoGeoLoader  // With auto-download
+func NewFileGeoLoader(geoIPPath, geoSitePath string) *FileGeoLoader  // File only
 ```
 
 ### CompiledRuleSet
@@ -188,14 +290,6 @@ type CompiledRuleSet[O Outbound] interface {
     Match(host HostInfo, proto Protocol, port uint16) (O, net.IP)
 }
 ```
-
-## GeoIP/GeoSite Data
-
-This library uses v2ray-compatible geo data format. You can download the data files from:
-
-- https://github.com/Loyalsoldier/v2ray-rules-dat/releases
-- https://github.com/v2fly/geoip/releases
-- https://github.com/v2fly/domain-list-community/releases
 
 ## License
 
