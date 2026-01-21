@@ -6,7 +6,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/metacubex/geo v0.0.0-20240718103914-a4db326ccfd7
 	github.com/oschwald/maxminddb-golang v1.13.1
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/net v0.24.0
 	google.golang.org/protobuf v1.34.2
 )
