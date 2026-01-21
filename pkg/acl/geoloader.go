@@ -188,7 +188,7 @@ func (l *AutoGeoLoader) download(filename, url string, checkFunc func(string) er
 		l.log("Download failed: %v", err)
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
@@ -203,10 +203,10 @@ func (l *AutoGeoLoader) download(filename, url string, checkFunc func(string) er
 		return err
 	}
 	tmpName := tmpFile.Name()
-	defer os.Remove(tmpName)
+	defer func() { _ = os.Remove(tmpName) }()
 
 	_, err = io.Copy(tmpFile, resp.Body)
-	tmpFile.Close()
+	_ = tmpFile.Close()
 	if err != nil {
 		l.log("Write file failed: %v", err)
 		return err
