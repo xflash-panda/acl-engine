@@ -13,7 +13,7 @@ func LoadGeoSite(filename string) (map[string]*geodat.GeoSite, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	result := make(map[string]*geodat.GeoSite)
 	for _, code := range codes {

@@ -23,7 +23,7 @@ func TestLoadFromFile(t *testing.T) {
 
 	reader, codes, err := LoadFromFile(testFile)
 	require.NoError(t, err)
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Verify we got some codes
 	assert.NotEmpty(t, codes, "should have loaded some site codes")
@@ -52,7 +52,7 @@ func TestReaderRead(t *testing.T) {
 
 	reader, codes, err := LoadFromFile(testFile)
 	require.NoError(t, err)
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Find a code to test
 	var testCode string
@@ -95,7 +95,7 @@ func TestReaderReadMultipleCodes(t *testing.T) {
 
 	reader, codes, err := LoadFromFile(testFile)
 	require.NoError(t, err)
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Read multiple codes to verify seek works correctly
 	readCount := 0
@@ -120,7 +120,7 @@ func TestReaderReadNonExistentCode(t *testing.T) {
 
 	reader, _, err := LoadFromFile(testFile)
 	require.NoError(t, err)
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Try to read a non-existent code
 	_, err = reader.Read("this-code-should-not-exist-12345")

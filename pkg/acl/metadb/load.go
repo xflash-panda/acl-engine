@@ -14,7 +14,7 @@ func LoadGeoIP(filename string) (map[string]*geodat.GeoIP, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	reader := db.Reader()
 	if reader == nil {
@@ -108,7 +108,7 @@ func LookupIP(filename string, ip net.IP) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	codes := db.LookupCode(ip)
 	for i, code := range codes {

@@ -109,8 +109,8 @@ func (r *Reader) loadMetadata() ([]string, error) {
 		}
 
 		codes = append(codes, code)
-		domainIndex[code] = int(codeIndex)
-		domainLength[code] = int(codeLength)
+		domainIndex[code] = int(codeIndex)   //nolint:gosec // codeIndex is file offset, safe for reasonable file sizes
+		domainLength[code] = int(codeLength) //nolint:gosec // codeLength is item count, safe for reasonable file sizes
 	}
 
 	r.domainIndex = domainIndex

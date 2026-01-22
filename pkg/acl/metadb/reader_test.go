@@ -24,7 +24,7 @@ func TestOpenDatabase(t *testing.T) {
 
 	db, err := OpenDatabase(testFile)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Verify database type
 	dbType := db.Type()
@@ -44,7 +44,7 @@ func TestDatabaseLookupCode(t *testing.T) {
 
 	db, err := OpenDatabase(testFile)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Test with some well-known IPs
 	testCases := []struct {
@@ -75,7 +75,7 @@ func TestDatabaseLookupIPv6(t *testing.T) {
 
 	db, err := OpenDatabase(testFile)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Test with IPv6 addresses
 	testCases := []struct {
