@@ -4,22 +4,21 @@ import (
 	"net"
 	"strings"
 
-	"github.com/metacubex/geo/geoip"
 	"github.com/xflash-panda/acl-engine/pkg/acl/geodat"
 )
 
 // LoadGeoIP loads a MetaDB file and converts it to the geodat format.
 // The keys of the map (country codes) are all normalized to lowercase.
 func LoadGeoIP(filename string) (map[string]*geodat.GeoIP, error) {
-	db, err := geoip.FromFile(filename)
+	db, err := OpenDatabase(filename)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = db.Close() }()
+	defer db.Close()
 
 	reader := db.Reader()
 	if reader == nil {
-		return nil, geoip.ErrInvalidDatabase
+		return nil, ErrInvalidDatabase
 	}
 
 	// Map to collect CIDRs by country code
@@ -27,7 +26,25 @@ func LoadGeoIP(filename string) (map[string]*geodat.GeoIP, error) {
 
 	networks := reader.Networks()
 	for networks.Next() {
-		subnet, err := networks.Network(&struct{}{})
+		// Use the appropriate type for unmarshaling based on database type
+		var subnet *net.IPNet
+		var err error
+
+		switch db.Type() {
+		case TypeMetaV0:
+			// Meta-geoip0 stores data as slice of strings or string
+			var codes any
+			subnet, err = networks.Network(&codes)
+		case TypeSing:
+			// sing-geoip stores data as string
+			var code string
+			subnet, err = networks.Network(&code)
+		default:
+			// MaxMind stores full country data
+			var country geoip2Country
+			subnet, err = networks.Network(&country)
+		}
+
 		if err != nil {
 			return nil, err
 		}
@@ -77,22 +94,21 @@ func LoadGeoIP(filename string) (map[string]*geodat.GeoIP, error) {
 
 // Verify verifies that a MetaDB file can be loaded successfully.
 func Verify(filename string) error {
-	db, err := geoip.FromFile(filename)
+	db, err := OpenDatabase(filename)
 	if err != nil {
 		return err
 	}
-	_ = db.Close()
-	return nil
+	return db.Close()
 }
 
 // LookupIP looks up the country codes for an IP address.
 // Returns empty slice if not found.
 func LookupIP(filename string, ip net.IP) ([]string, error) {
-	db, err := geoip.FromFile(filename)
+	db, err := OpenDatabase(filename)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = db.Close() }()
+	defer db.Close()
 
 	codes := db.LookupCode(ip)
 	for i, code := range codes {

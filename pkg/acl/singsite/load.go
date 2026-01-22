@@ -3,17 +3,17 @@ package singsite
 import (
 	"strings"
 
-	"github.com/metacubex/geo/encoding/singgeo"
 	"github.com/xflash-panda/acl-engine/pkg/acl/geodat"
 )
 
 // LoadGeoSite loads a sing-geosite db file and converts it to the geodat format.
 // The keys of the map (site codes) are all normalized to lowercase.
 func LoadGeoSite(filename string) (map[string]*geodat.GeoSite, error) {
-	reader, codes, err := singgeo.LoadSiteFromFile(filename)
+	reader, codes, err := LoadFromFile(filename)
 	if err != nil {
 		return nil, err
 	}
+	defer reader.Close()
 
 	result := make(map[string]*geodat.GeoSite)
 	for _, code := range codes {
@@ -26,13 +26,13 @@ func LoadGeoSite(filename string) (map[string]*geodat.GeoSite, error) {
 		for _, item := range items {
 			var domainType geodat.Domain_Type
 			switch item.Type {
-			case singgeo.RuleTypeDomain:
+			case RuleTypeDomain:
 				domainType = geodat.Domain_Full
-			case singgeo.RuleTypeDomainSuffix:
+			case RuleTypeDomainSuffix:
 				domainType = geodat.Domain_RootDomain
-			case singgeo.RuleTypeDomainKeyword:
+			case RuleTypeDomainKeyword:
 				domainType = geodat.Domain_Plain
-			case singgeo.RuleTypeDomainRegex:
+			case RuleTypeDomainRegex:
 				domainType = geodat.Domain_Regex
 			default:
 				continue
@@ -56,6 +56,9 @@ func LoadGeoSite(filename string) (map[string]*geodat.GeoSite, error) {
 
 // Verify verifies that a sing-geosite db file can be loaded successfully.
 func Verify(filename string) error {
-	_, _, err := singgeo.LoadSiteFromFile(filename)
-	return err
+	reader, _, err := LoadFromFile(filename)
+	if err != nil {
+		return err
+	}
+	return reader.Close()
 }
