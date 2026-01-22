@@ -25,8 +25,8 @@ var ErrInvalidDatabase = errors.New("invalid GeoIP database")
 
 // Database wraps a MaxMind DB reader with type information.
 type Database struct {
-	reader   *maxminddb.Reader
-	dbType   DatabaseType
+	reader *maxminddb.Reader
+	dbType DatabaseType
 }
 
 // geoip2Country is used for parsing MaxMind GeoIP2 format.
