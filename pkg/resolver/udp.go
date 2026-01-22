@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	defaultTimeout     = 2 * time.Second
-	defaultRetryTimes  = 2
-	defaultDNSPort     = "53"
-	defaultDNSTLSPort  = "853"
+	defaultTimeout    = 2 * time.Second
+	defaultRetryTimes = 2
+	defaultDNSPort    = "53"
+	defaultDNSTLSPort = "853"
 )
 
 // UDP is a Resolver that uses a UDP DNS server.

@@ -21,4 +21,3 @@ func splitIPv4IPv6(ips []net.IP) (ipv4, ipv6 net.IP) {
 	}
 	return ipv4, ipv6
 }
-
