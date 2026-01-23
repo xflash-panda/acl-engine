@@ -25,11 +25,15 @@ func LoadGeoSite(filename string) (map[string]*geodat.GeoSite, error) {
 		domains := make([]*geodat.Domain, 0, len(items))
 		for _, item := range items {
 			var domainType geodat.Domain_Type
+			value := item.Value
 			switch item.Type {
 			case RuleTypeDomain:
 				domainType = geodat.Domain_Full
 			case RuleTypeDomainSuffix:
 				domainType = geodat.Domain_RootDomain
+				// sing-geosite stores suffix with leading dot (e.g., ".google.com")
+				// but our matcher expects without dot (e.g., "google.com")
+				value = strings.TrimPrefix(value, ".")
 			case RuleTypeDomainKeyword:
 				domainType = geodat.Domain_Plain
 			case RuleTypeDomainRegex:
@@ -40,7 +44,7 @@ func LoadGeoSite(filename string) (map[string]*geodat.GeoSite, error) {
 
 			domains = append(domains, &geodat.Domain{
 				Type:  domainType,
-				Value: item.Value,
+				Value: value,
 			})
 		}
 
