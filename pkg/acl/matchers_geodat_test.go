@@ -106,13 +106,16 @@ func Test_geositeMatcher_matchDomain_RootDomain(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := &geositeMatcher{
-				Domains: []geositeDomain{
+			m, err := newGeositeMatcher(&geodat.GeoSite{
+				Domain: []*geodat.Domain{
 					{
-						Type:  geositeDomainRoot,
+						Type:  geodat.Domain_RootDomain,
 						Value: tt.domainValue,
 					},
 				},
+			}, nil)
+			if err != nil {
+				t.Fatalf("newGeositeMatcher() error = %v", err)
 			}
 			host := HostInfo{Name: tt.host}
 			if got := m.Match(host); got != tt.want {
@@ -152,13 +155,16 @@ func Test_geositeMatcher_matchDomain_Full(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := &geositeMatcher{
-				Domains: []geositeDomain{
+			m, err := newGeositeMatcher(&geodat.GeoSite{
+				Domain: []*geodat.Domain{
 					{
-						Type:  geositeDomainFull,
+						Type:  geodat.Domain_Full,
 						Value: tt.domainValue,
 					},
 				},
+			}, nil)
+			if err != nil {
+				t.Fatalf("newGeositeMatcher() error = %v", err)
 			}
 			host := HostInfo{Name: tt.host}
 			if got := m.Match(host); got != tt.want {
@@ -203,13 +209,16 @@ func Test_geositeMatcher_matchDomain_Plain(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := &geositeMatcher{
-				Domains: []geositeDomain{
+			m, err := newGeositeMatcher(&geodat.GeoSite{
+				Domain: []*geodat.Domain{
 					{
-						Type:  geositeDomainPlain,
+						Type:  geodat.Domain_Plain,
 						Value: tt.domainValue,
 					},
 				},
+			}, nil)
+			if err != nil {
+				t.Fatalf("newGeositeMatcher() error = %v", err)
 			}
 			host := HostInfo{Name: tt.host}
 			if got := m.Match(host); got != tt.want {
@@ -442,13 +451,16 @@ func Test_geositeMatcher_leadingDotBugFix(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := &geositeMatcher{
-				Domains: []geositeDomain{
+			m, err := newGeositeMatcher(&geodat.GeoSite{
+				Domain: []*geodat.Domain{
 					{
-						Type:  geositeDomainRoot,
+						Type:  geodat.Domain_RootDomain,
 						Value: tt.domainValue,
 					},
 				},
+			}, nil)
+			if err != nil {
+				t.Fatalf("newGeositeMatcher() error = %v", err)
 			}
 			host := HostInfo{Name: tt.host}
 			if got := m.Match(host); got != tt.want {

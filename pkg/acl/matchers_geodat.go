@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/xflash-panda/acl-engine/pkg/acl/domain"
 	"github.com/xflash-panda/acl-engine/pkg/acl/geodat"
 )
 
@@ -112,39 +113,45 @@ type geositeDomain struct {
 }
 
 type geositeMatcher struct {
-	Domains []geositeDomain
-	// Attributes are matched using "and" logic - if you have multiple attributes here,
-	// a domain must have all of those attributes to be considered a match.
+	// Fast matchers using succinct trie (for domains without attributes or with matching attributes)
+	domainMatcher *domain.Matcher // Full/Root domains that match attributes
+
+	// Slow matchers for special cases
+	plainDomains []geositeDomain // Plain (keyword) matches
+	regexDomains []geositeDomain // Regex matches
+	attrDomains  []geositeDomain // Domains with attributes that need checking
+
+	// Attributes are matched using "and" logic
 	Attrs []string
 }
 
-func (m *geositeMatcher) matchDomain(domain geositeDomain, host HostInfo) bool {
+func (m *geositeMatcher) matchDomainWithAttrs(d geositeDomain, host HostInfo) bool {
 	// Match attributes first
 	if len(m.Attrs) > 0 {
-		if len(domain.Attrs) == 0 {
+		if len(d.Attrs) == 0 {
 			return false
 		}
 		for _, attr := range m.Attrs {
-			if !domain.Attrs[attr] {
+			if !d.Attrs[attr] {
 				return false
 			}
 		}
 	}
 
-	switch domain.Type {
+	switch d.Type {
 	case geositeDomainPlain:
-		return strings.Contains(host.Name, domain.Value)
+		return strings.Contains(host.Name, d.Value)
 	case geositeDomainRegex:
-		if domain.Regex != nil {
-			return domain.Regex.MatchString(host.Name)
+		if d.Regex != nil {
+			return d.Regex.MatchString(host.Name)
 		}
 	case geositeDomainFull:
-		return host.Name == domain.Value
+		return host.Name == d.Value
 	case geositeDomainRoot:
-		if host.Name == domain.Value {
+		if host.Name == d.Value {
 			return true
 		}
-		return strings.HasSuffix(host.Name, "."+domain.Value)
+		return strings.HasSuffix(host.Name, "."+d.Value)
 	default:
 		return false
 	}
@@ -152,53 +159,126 @@ func (m *geositeMatcher) matchDomain(domain geositeDomain, host HostInfo) bool {
 }
 
 func (m *geositeMatcher) Match(host HostInfo) bool {
-	for _, domain := range m.Domains {
-		if m.matchDomain(domain, host) {
+	// Fast path: use succinct trie for Full/Root domains without special attribute requirements
+	if m.domainMatcher != nil && m.domainMatcher.Match(host.Name) {
+		return true
+	}
+
+	// Check plain (keyword) matches
+	for _, d := range m.plainDomains {
+		if m.matchDomainWithAttrs(d, host) {
 			return true
 		}
 	}
+
+	// Check regex matches
+	for _, d := range m.regexDomains {
+		if m.matchDomainWithAttrs(d, host) {
+			return true
+		}
+	}
+
+	// Check domains with special attributes
+	for _, d := range m.attrDomains {
+		if m.matchDomainWithAttrs(d, host) {
+			return true
+		}
+	}
+
 	return false
 }
 
 func newGeositeMatcher(list *geodat.GeoSite, attrs []string) (*geositeMatcher, error) {
-	domains := make([]geositeDomain, len(list.Domain))
-	for i, domain := range list.Domain {
-		switch domain.Type {
-		case geodat.Domain_Plain:
-			domains[i] = geositeDomain{
-				Type:  geositeDomainPlain,
-				Value: domain.Value,
-				Attrs: domainAttributeToMap(domain.Attribute),
+	// Separate domains by type and attribute requirements
+	var fullDomains []string      // For exact matches
+	var rootDomains []string      // For suffix matches
+	var plainDomains []geositeDomain
+	var regexDomains []geositeDomain
+	var attrDomains []geositeDomain
+
+	needsAttrCheck := len(attrs) > 0
+
+	for _, d := range list.Domain {
+		attrMap := domainAttributeToMap(d.Attribute)
+
+		// Check if this domain matches required attributes
+		matchesAttrs := true
+		if needsAttrCheck {
+			if len(attrMap) == 0 {
+				matchesAttrs = false
+			} else {
+				for _, attr := range attrs {
+					if !attrMap[attr] {
+						matchesAttrs = false
+						break
+					}
+				}
 			}
+		}
+
+		switch d.Type {
+		case geodat.Domain_Plain:
+			// Plain always needs linear scan
+			plainDomains = append(plainDomains, geositeDomain{
+				Type:  geositeDomainPlain,
+				Value: d.Value,
+				Attrs: attrMap,
+			})
+
 		case geodat.Domain_Regex:
-			regex, err := regexp.Compile(domain.Value)
+			regex, err := regexp.Compile(d.Value)
 			if err != nil {
 				return nil, err
 			}
-			domains[i] = geositeDomain{
+			regexDomains = append(regexDomains, geositeDomain{
 				Type:  geositeDomainRegex,
 				Regex: regex,
-				Attrs: domainAttributeToMap(domain.Attribute),
-			}
+				Attrs: attrMap,
+			})
+
 		case geodat.Domain_Full:
-			domains[i] = geositeDomain{
-				Type:  geositeDomainFull,
-				Value: domain.Value,
-				Attrs: domainAttributeToMap(domain.Attribute),
+			if matchesAttrs && (len(attrMap) == 0 || !needsAttrCheck) {
+				// Can use fast matcher
+				fullDomains = append(fullDomains, d.Value)
+			} else {
+				// Needs attribute checking
+				attrDomains = append(attrDomains, geositeDomain{
+					Type:  geositeDomainFull,
+					Value: d.Value,
+					Attrs: attrMap,
+				})
 			}
+
 		case geodat.Domain_RootDomain:
-			domains[i] = geositeDomain{
-				Type:  geositeDomainRoot,
-				Value: domain.Value,
-				Attrs: domainAttributeToMap(domain.Attribute),
+			if matchesAttrs && (len(attrMap) == 0 || !needsAttrCheck) {
+				// Can use fast matcher
+				rootDomains = append(rootDomains, d.Value)
+			} else {
+				// Needs attribute checking
+				attrDomains = append(attrDomains, geositeDomain{
+					Type:  geositeDomainRoot,
+					Value: d.Value,
+					Attrs: attrMap,
+				})
 			}
+
 		default:
 			return nil, errors.New("unsupported domain type")
 		}
 	}
+
+	// Build fast domain matcher if we have domains that can use it
+	var domainMatcher *domain.Matcher
+	if len(fullDomains) > 0 || len(rootDomains) > 0 {
+		domainMatcher = domain.NewMatcher(fullDomains, rootDomains)
+	}
+
 	return &geositeMatcher{
-		Domains: domains,
-		Attrs:   attrs,
+		domainMatcher: domainMatcher,
+		plainDomains:  plainDomains,
+		regexDomains:  regexDomains,
+		attrDomains:   attrDomains,
+		Attrs:         attrs,
 	}, nil
 }
 
