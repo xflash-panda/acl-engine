@@ -70,7 +70,7 @@ func setBit(bm *[]uint64, i int, v int) {
 	for i>>6 >= len(*bm) {
 		*bm = append(*bm, 0)
 	}
-	(*bm)[i>>6] |= uint64(v) << uint(i&63)
+	(*bm)[i>>6] |= uint64(v) << (i & 63) // #nosec G115 -- i&63 is always 0-63
 }
 
 // getBit returns the i-th bit from the bitmap.
@@ -78,18 +78,18 @@ func getBit(bm []uint64, i int) uint64 {
 	if i>>6 >= len(bm) {
 		return 0
 	}
-	return bm[i>>6] & (1 << uint(i&63))
+	return bm[i>>6] & (1 << (i & 63)) // #nosec G115 -- i&63 is always 0-63
 }
 
 // countZeros counts the number of 0 bits before position i.
 func countZeros(bm []uint64, ranks []int32, i int) int {
-	ones, _ := rank64(bm, ranks, int32(i))
+	ones, _ := rank64(bm, ranks, int32(i)) // #nosec G115 -- bitmap index fits in int32
 	return i - int(ones)
 }
 
 // selectIthOne finds the position of the i-th 1 bit.
 func selectIthOne(bm []uint64, ranks, selects []int32, i int) int {
-	pos, _ := select32R64(bm, selects, ranks, int32(i))
+	pos, _ := select32R64(bm, selects, ranks, int32(i)) // #nosec G115 -- index fits in int32
 	return int(pos)
 }
 
@@ -105,12 +105,12 @@ func rank64(words []uint64, rindex []int32, i int32) (int32, int32) {
 		}
 		return 0, 0
 	}
-	j := uint32(i & 63)
+	j := uint32(i & 63) // #nosec G115 -- i&63 is always 0-63, fits in uint32
 	n := rindex[wordI]
 	w := words[wordI]
 	// Use hardware POPCNT instruction via bits.OnesCount64
-	c1 := n + int32(bits.OnesCount64(w&((1<<j)-1)))
-	return c1, int32(w>>uint(j)) & 1
+	c1 := n + int32(bits.OnesCount64(w&((1<<j)-1))) // #nosec G115 -- OnesCount64 max is 64
+	return c1, int32(w>>j) & 1                      // #nosec G115 -- result is 0 or 1
 }
 
 // indexRank64 builds a rank index for the bitmap.
@@ -119,7 +119,7 @@ func indexRank64(words []uint64) []int32 {
 	n := int32(0)
 	for i := 0; i < len(words); i++ {
 		idx[i] = n
-		n += int32(bits.OnesCount64(words[i]))
+		n += int32(bits.OnesCount64(words[i])) // #nosec G115 -- OnesCount64 max is 64
 	}
 	return idx
 }
@@ -137,7 +137,8 @@ func select32R64(words []uint64, sindex, rindex []int32, i int32) (int32, int32)
 	}
 
 	// Linear search within the narrowed range
-	for wordI < int32(len(rindex)) && rindex[wordI] <= i {
+	rindexLen := int32(len(rindex)) // #nosec G115 -- rindex length fits in int32
+	for wordI < rindexLen && rindex[wordI] <= i {
 		wordI++
 	}
 	if wordI > 0 {
@@ -157,7 +158,7 @@ func select32R64(words []uint64, sindex, rindex []int32, i int32) (int32, int32)
 		n--
 	}
 
-	bitPos := int32(bits.TrailingZeros64(w))
+	bitPos := int32(bits.TrailingZeros64(w)) // #nosec G115 -- TrailingZeros64 max is 64
 	return (wordI << 6) + bitPos, 1
 }
 
@@ -170,17 +171,19 @@ func indexSelect32R64(words []uint64) ([]int32, []int32) {
 	if len(ranks) > 0 {
 		totalOnes = ranks[len(ranks)-1]
 		if len(words) > 0 {
-			totalOnes += int32(bits.OnesCount64(words[len(words)-1]))
+			totalOnes += int32(bits.OnesCount64(words[len(words)-1])) // #nosec G115 -- OnesCount64 max is 64
 		}
 	}
 
 	selectSize := (int(totalOnes) >> 8) + 1
 	selects := make([]int32, selectSize)
+	selectsLen := int32(len(selects)) // #nosec G115 -- selects length fits in int32
 
 	onesCount := int32(0)
 	for i := 0; i < len(words); i++ {
-		for onesCount>>8 < int32(len(selects)) && ranks[i] <= onesCount && onesCount < ranks[i]+int32(bits.OnesCount64(words[i])) {
-			selects[onesCount>>8] = int32(i)
+		wordOnes := int32(bits.OnesCount64(words[i])) // #nosec G115 -- OnesCount64 max is 64
+		for onesCount>>8 < selectsLen && ranks[i] <= onesCount && onesCount < ranks[i]+wordOnes {
+			selects[onesCount>>8] = int32(i) // #nosec G115 -- loop index fits in int32
 			onesCount += 256
 		}
 		if i < len(words)-1 {
