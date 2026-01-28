@@ -144,6 +144,118 @@ func TestMatcher_SpecialCharacters(t *testing.T) {
 	}
 }
 
+// TestMatcher_GeositeOpenAI tests matching with geosite:openai-like domain list.
+// This is a regression test for the bug where multi-domain lists with mixed
+// exact and suffix domains would fail to match.
+func TestMatcher_GeositeOpenAI(t *testing.T) {
+	// Simulate geosite:openai data structure
+	fullDomains := []string{
+		"openaiapi-site.azureedge.net",
+		"openaicom-api-bdcpf8c6d2e9atf6.z01.azurefd.net",
+		"openaicomproductionae4b.blob.core.windows.net",
+		"production-openaicom-storage.azureedge.net",
+		"chatgpt.com",
+		"chat.com",
+		"oaistatic.com",
+		"oaiusercontent.com",
+		"openai.com",
+		"sora.com",
+	}
+	rootDomains := []string{
+		"chatgpt.com",
+		"chat.com",
+		"oaistatic.com",
+		"oaiusercontent.com",
+		"openai.com",
+		"sora.com",
+	}
+
+	matcher := NewMatcher(fullDomains, rootDomains)
+
+	tests := []struct {
+		domain      string
+		shouldMatch bool
+	}{
+		// Root domains should match exactly
+		{"openai.com", true},
+		{"chatgpt.com", true},
+		{"chat.com", true},
+		{"sora.com", true},
+		{"oaistatic.com", true},
+		{"oaiusercontent.com", true},
+		// Subdomains of root domains should match
+		{"chat.openai.com", true},
+		{"api.openai.com", true},
+		{"www.chatgpt.com", true},
+		{"cdn.oaistatic.com", true},
+		// Full exact domains should match
+		{"openaiapi-site.azureedge.net", true},
+		{"openaicom-api-bdcpf8c6d2e9atf6.z01.azurefd.net", true},
+		{"openaicomproductionae4b.blob.core.windows.net", true},
+		{"production-openaicom-storage.azureedge.net", true},
+		// Non-matching domains
+		{"notfound.com", false},
+		{"fake-openai.com", false},
+		{"openai.org", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.domain, func(t *testing.T) {
+			result := matcher.Match(tt.domain)
+			if result != tt.shouldMatch {
+				t.Errorf("Match(%q) = %v, want %v", tt.domain, result, tt.shouldMatch)
+			}
+		})
+	}
+}
+
+// TestMatcher_MixedDomainTypes tests various combinations of exact and suffix domains.
+func TestMatcher_MixedDomainTypes(t *testing.T) {
+	// Mix of different TLDs, lengths, and patterns
+	fullDomains := []string{
+		"specific.example.com",
+		"cdn.example.net",
+		"api.service.io",
+	}
+	rootDomains := []string{
+		"example.com",
+		"example.net",
+		"service.io",
+	}
+
+	matcher := NewMatcher(fullDomains, rootDomains)
+
+	tests := []struct {
+		domain      string
+		shouldMatch bool
+	}{
+		// Root domain exact match
+		{"example.com", true},
+		{"example.net", true},
+		{"service.io", true},
+		// Subdomains
+		{"sub.example.com", true},
+		{"deep.sub.example.net", true},
+		{"app.service.io", true},
+		// Exact full domains
+		{"specific.example.com", true},
+		{"cdn.example.net", true},
+		{"api.service.io", true},
+		// Non-matching
+		{"example.org", false},
+		{"notexample.com", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.domain, func(t *testing.T) {
+			result := matcher.Match(tt.domain)
+			if result != tt.shouldMatch {
+				t.Errorf("Match(%q) = %v, want %v", tt.domain, result, tt.shouldMatch)
+			}
+		})
+	}
+}
+
 // Benchmark tests
 func BenchmarkMatcher_Match_Hit_First(b *testing.B) {
 	// Benchmark matching first domain in list

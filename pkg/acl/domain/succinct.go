@@ -114,41 +114,46 @@ func rank64(words []uint64, rindex []int32, i int32) (int32, int32) {
 }
 
 // indexRank64 builds a rank index for the bitmap.
+// Returns an array where ranks[i] = number of 1 bits in words[0:i].
+// The array has len(words)+1 entries, with ranks[len(words)] = total ones.
 func indexRank64(words []uint64) []int32 {
-	idx := make([]int32, len(words))
+	idx := make([]int32, len(words)+1)
 	n := int32(0)
 	for i := 0; i < len(words); i++ {
 		idx[i] = n
 		n += int32(bits.OnesCount64(words[i])) // #nosec G115 -- OnesCount64 max is 64
 	}
+	idx[len(words)] = n // Total count at the end
 	return idx
 }
 
 // select32R64 finds the position of the i-th 1 bit using select index.
+// The select index samples every 32 ones, so we use i>>5 to find the starting word.
 func select32R64(words []uint64, sindex, rindex []int32, i int32) (int32, int32) {
 	if i < 0 || len(sindex) == 0 {
 		return 0, 0
 	}
 
-	// Use select index to narrow down search range
-	wordI := int32(0)
-	if int(i>>8) < len(sindex) {
-		wordI = sindex[i>>8]
-	}
+	l := int32(len(words))
 
-	// Linear search within the narrowed range
-	rindexLen := int32(len(rindex)) // #nosec G115 -- rindex length fits in int32
-	for wordI < rindexLen && rindex[wordI] <= i {
+	// Use select index to find starting word (samples every 32 ones)
+	sidx := i >> 5 // #nosec G115 -- index fits in int32
+	if sidx >= int32(len(sindex)) {
+		sidx = int32(len(sindex)) - 1
+	}
+	wordI := sindex[sidx] >> 6
+
+	// Linear search to find the word containing the i-th one
+	// rindex has len(words)+1 entries, so rindex[wordI+1] is safe
+	for wordI < l && rindex[wordI+1] <= i {
 		wordI++
 	}
-	if wordI > 0 {
-		wordI--
+
+	if wordI >= l {
+		return l << 6, l << 6
 	}
 
-	if int(wordI) >= len(words) {
-		return 0, 0
-	}
-
+	// Find the position within the word
 	n := i - rindex[wordI]
 	w := words[wordI]
 
@@ -163,32 +168,29 @@ func select32R64(words []uint64, sindex, rindex []int32, i int32) (int32, int32)
 }
 
 // indexSelect32R64 builds both rank and select indices.
+// The select index stores the bit position of every 32nd one bit,
+// enabling O(1) lookup to find the word containing any given one bit.
 func indexSelect32R64(words []uint64) ([]int32, []int32) {
 	ranks := indexRank64(words)
 
-	// Build select index (one entry per 256 ones)
-	totalOnes := int32(0)
-	if len(ranks) > 0 {
-		totalOnes = ranks[len(ranks)-1]
-		if len(words) > 0 {
-			totalOnes += int32(bits.OnesCount64(words[len(words)-1])) // #nosec G115 -- OnesCount64 max is 64
+	// Build select index by scanning all bits
+	// Sample every 32nd one bit (when ith % 32 == 0)
+	l := len(words) << 6
+	selects := make([]int32, 0, len(words))
+
+	ith := int32(-1)
+	for i := 0; i < l; i++ {
+		if words[i>>6]&(1<<uint(i&63)) != 0 {
+			ith++
+			if ith%32 == 0 {
+				selects = append(selects, int32(i)) // #nosec G115 -- bit position fits in int32
+			}
 		}
 	}
 
-	selectSize := (int(totalOnes) >> 8) + 1
-	selects := make([]int32, selectSize)
-	selectsLen := int32(len(selects)) // #nosec G115 -- selects length fits in int32
-
-	onesCount := int32(0)
-	for i := 0; i < len(words); i++ {
-		wordOnes := int32(bits.OnesCount64(words[i])) // #nosec G115 -- OnesCount64 max is 64
-		for onesCount>>8 < selectsLen && ranks[i] <= onesCount && onesCount < ranks[i]+wordOnes {
-			selects[onesCount>>8] = int32(i) // #nosec G115 -- loop index fits in int32
-			onesCount += 256
-		}
-		if i < len(words)-1 {
-			onesCount = ranks[i+1]
-		}
+	// Ensure we have at least one entry
+	if len(selects) == 0 {
+		selects = append(selects, 0)
 	}
 
 	return selects, ranks
