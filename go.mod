@@ -3,7 +3,7 @@ module github.com/xflash-panda/acl-engine
 go 1.24.0
 
 require (
-	github.com/database64128/tfo-go/v2 v2.2.2
+	github.com/database64128/tfo-go/v2 v2.3.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/miekg/dns v1.1.62
 	github.com/oschwald/maxminddb-golang v1.13.1
@@ -14,7 +14,7 @@ require (
 )
 
 require (
-	github.com/database64128/netx-go v0.0.0-20240905055117-62795b8b054a // indirect
+	github.com/database64128/netx-go v0.1.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
