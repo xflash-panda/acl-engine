@@ -190,8 +190,8 @@ func (m *geositeMatcher) Match(host HostInfo) bool {
 
 func newGeositeMatcher(list *geodat.GeoSite, attrs []string) (*geositeMatcher, error) {
 	// Separate domains by type and attribute requirements
-	var fullDomains []string      // For exact matches
-	var rootDomains []string      // For suffix matches
+	var fullDomains []string // For exact matches
+	var rootDomains []string // For suffix matches
 	var plainDomains []geositeDomain
 	var regexDomains []geositeDomain
 	var attrDomains []geositeDomain

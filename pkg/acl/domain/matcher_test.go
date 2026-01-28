@@ -6,11 +6,11 @@ import (
 
 func TestMatcher_BasicMatching(t *testing.T) {
 	tests := []struct {
-		name          string
-		domains       []string
-		domainSuffix  []string
-		testDomain    string
-		shouldMatch   bool
+		name         string
+		domains      []string
+		domainSuffix []string
+		testDomain   string
+		shouldMatch  bool
 	}{
 		{
 			name:         "exact match",
