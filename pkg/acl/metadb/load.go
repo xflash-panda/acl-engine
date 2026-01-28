@@ -7,6 +7,29 @@ import (
 	"github.com/xflash-panda/acl-engine/pkg/acl/geodat"
 )
 
+// extractCodesFromMetaV0 extracts country codes from MetaV0 format data.
+// MetaV0 can store data as either a single string or a slice of strings.
+func extractCodesFromMetaV0(data any) []string {
+	switch v := data.(type) {
+	case string:
+		if v != "" {
+			return []string{v}
+		}
+	case []any:
+		codes := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok && s != "" {
+				codes = append(codes, s)
+			}
+		}
+		if len(codes) == 0 {
+			return nil
+		}
+		return codes
+	}
+	return nil
+}
+
 // LoadGeoIP loads a MetaDB file and converts it to the geodat format.
 // The keys of the map (country codes) are all normalized to lowercase.
 func LoadGeoIP(filename string) (map[string]*geodat.GeoIP, error) {
@@ -28,28 +51,37 @@ func LoadGeoIP(filename string) (map[string]*geodat.GeoIP, error) {
 	for networks.Next() {
 		// Use the appropriate type for unmarshaling based on database type
 		var subnet *net.IPNet
+		var codes []string
 		var err error
 
 		switch db.Type() {
 		case TypeMetaV0:
 			// Meta-geoip0 stores data as slice of strings or string
-			var codes any
-			subnet, err = networks.Network(&codes)
+			var metaCodes any
+			subnet, err = networks.Network(&metaCodes)
+			if err == nil {
+				codes = extractCodesFromMetaV0(metaCodes)
+			}
 		case TypeSing:
 			// sing-geoip stores data as string
 			var code string
 			subnet, err = networks.Network(&code)
+			if err == nil && code != "" {
+				codes = []string{code}
+			}
 		default:
 			// MaxMind stores full country data
 			var country geoip2Country
 			subnet, err = networks.Network(&country)
+			if err == nil && country.Country.IsoCode != "" {
+				codes = []string{country.Country.IsoCode}
+			}
 		}
 
 		if err != nil {
 			return nil, err
 		}
 
-		codes := db.LookupCode(subnet.IP)
 		if len(codes) == 0 {
 			continue
 		}
