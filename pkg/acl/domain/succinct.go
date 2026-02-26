@@ -137,7 +137,7 @@ func select32R64(words []uint64, sindex, rindex []int32, i int32) (int32, int32)
 	l := int32(len(words)) //nolint:gosec // G115: len fits in int32 for trie data
 
 	// Use select index to find starting word (samples every 32 ones)
-	sidx := i >> 5 // #nosec G115 -- index fits in int32
+	sidx := i >> 5                  // #nosec G115 -- index fits in int32
 	if sidx >= int32(len(sindex)) { //nolint:gosec // G115: len fits in int32
 		sidx = int32(len(sindex)) - 1 //nolint:gosec // G115: len fits in int32
 	}
