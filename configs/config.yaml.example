@@ -1,0 +1,160 @@
+# =============================================================================
+# ACL Engine Configuration
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Outbounds - Define named outbound connections
+# -----------------------------------------------------------------------------
+# Built-in outbounds (always available, can be overridden):
+#   - direct: Direct connection using local network
+#   - reject: Reject all connections
+# -----------------------------------------------------------------------------
+outbounds:
+  # --- Direct outbound (connect directly using local network) ---
+  - name: direct
+    type: direct
+    direct:
+      # IP version preference mode:
+      #   auto - Dual-stack "happy eyeballs", try both IPv4 and IPv6 simultaneously
+      #   64   - Prefer IPv6, fallback to IPv4
+      #   46   - Prefer IPv4, fallback to IPv6
+      #   6    - IPv6 only, fail if unavailable
+      #   4    - IPv4 only, fail if unavailable
+      mode: auto
+
+      # Bind outgoing connections to a specific local IPv4 address
+      # bindIPv4: 2.4.6.8
+
+      # Bind outgoing connections to a specific local IPv6 address
+      # bindIPv6: "::1"
+
+      # Bind outgoing connections to a specific network device (Linux only)
+      # bindDevice: eth0
+
+      # Enable TCP Fast Open for optimized connection establishment
+      fastOpen: false
+
+  # --- SOCKS5 proxy outbound ---
+  - name: my-socks5
+    type: socks5
+    socks5:
+      addr: 127.0.0.1:1080
+      # Optional authentication
+      # username: user
+      # password: pass
+
+  # --- HTTP/HTTPS proxy outbound ---
+  - name: my-http-proxy
+    type: http
+    http:
+      # URL format: http://[user:pass@]host:port or https://[user:pass@]host:port
+      url: http://127.0.0.1:8080
+      # Skip TLS certificate verification (for HTTPS proxies)
+      insecure: false
+
+  # --- Reject outbound (block all connections) ---
+  - name: block
+    type: reject
+
+# -----------------------------------------------------------------------------
+# DNS Resolver - Used to resolve hostnames for ACL rule matching
+# -----------------------------------------------------------------------------
+# If not configured, the router will not resolve hostnames before matching.
+# When configured, resolved IPs are used for IP-based and GeoIP rule matching.
+# -----------------------------------------------------------------------------
+resolver:
+  # Resolver type: system, udp, tcp, tls, https
+  type: udp
+
+  # --- UDP DNS ---
+  udp:
+    addr: 8.8.8.8:53
+    timeout: 5s
+
+  # --- TCP DNS ---
+  # tcp:
+  #   addr: 8.8.8.8:53
+  #   timeout: 5s
+
+  # --- DNS-over-TLS ---
+  # tls:
+  #   addr: 1.1.1.1:853
+  #   timeout: 5s
+  #   sni: cloudflare-dns.com
+  #   insecure: false
+
+  # --- DNS-over-HTTPS ---
+  # https:
+  #   addr: https://dns.google/dns-query
+  #   timeout: 5s
+  #   sni: dns.google
+  #   insecure: false
+
+# -----------------------------------------------------------------------------
+# ACL Rules - Traffic routing rules
+# -----------------------------------------------------------------------------
+# Rule format: outbound(address[, protocol/port][, hijackAddress])
+#
+# Address types:
+#   all / *                 - Match all traffic
+#   1.2.3.4                 - Single IP
+#   192.168.0.0/16          - CIDR range
+#   example.com             - Exact domain match
+#   *.example.com           - Wildcard domain match
+#   suffix:example.com      - Domain suffix match (includes subdomains)
+#   geoip:cn                - GeoIP country code
+#   geosite:google          - GeoSite category
+#   geosite:google@cn       - GeoSite category with attribute filter
+#
+# Protocol/port formats:
+#   (omitted) / * / */*     - All protocols, all ports
+#   tcp / udp               - Specific protocol, all ports
+#   tcp/443                 - Specific protocol and port
+#   udp/53                  - Specific protocol and port
+#   */443                   - All protocols, specific port
+#   tcp/8000-9000           - Protocol with port range
+#
+# Hijack address (optional third parameter):
+#   Redirect matched traffic to a different IP address
+#
+# Rules are evaluated in order; first match wins.
+# -----------------------------------------------------------------------------
+acl:
+  # Load rules from an external file
+  # file: /path/to/rules.acl
+
+  # Or define rules inline (cannot use both file and inline)
+  inline:
+    # Block QUIC traffic
+    - reject(all, udp/443)
+
+    # Route specific protocols through SOCKS5 proxy
+    - my-socks5(all, tcp/22)
+
+    # Route by GeoIP
+    # - my-socks5(geoip:cn)
+
+    # Route by GeoSite category
+    # - my-socks5(geosite:google)
+    # - my-socks5(geosite:netflix)
+    # - my-socks5(geosite:category-porn)
+
+    # Route specific domains
+    # - my-socks5(suffix:google.com)
+    # - my-socks5(*.github.com)
+    # - my-socks5(example.com)
+
+    # Route by CIDR
+    # - my-socks5(192.168.0.0/16)
+
+    # Hijack DNS to local resolver
+    # - direct(all, udp/53, 127.0.0.1)
+
+    # Default: direct connection for all remaining traffic
+    - direct(all)
+
+  # Note: The following settings are managed programmatically via BuildOptions:
+  #   - GeoIP/GeoSite databases (paths, formats, auto-update, download URLs)
+  #     See acl.AutoGeoLoader and acl.FileGeoLoader
+  #   - Router cache size (default: 1024)
+  #     See BuildOptions.CacheSize
