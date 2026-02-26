@@ -134,12 +134,12 @@ func select32R64(words []uint64, sindex, rindex []int32, i int32) (int32, int32)
 		return 0, 0
 	}
 
-	l := int32(len(words))
+	l := int32(len(words)) //nolint:gosec // G115: len fits in int32 for trie data
 
 	// Use select index to find starting word (samples every 32 ones)
 	sidx := i >> 5 // #nosec G115 -- index fits in int32
-	if sidx >= int32(len(sindex)) {
-		sidx = int32(len(sindex)) - 1
+	if sidx >= int32(len(sindex)) { //nolint:gosec // G115: len fits in int32
+		sidx = int32(len(sindex)) - 1 //nolint:gosec // G115: len fits in int32
 	}
 	wordI := sindex[sidx] >> 6
 
@@ -180,7 +180,7 @@ func indexSelect32R64(words []uint64) ([]int32, []int32) {
 
 	ith := int32(-1)
 	for i := 0; i < l; i++ {
-		if words[i>>6]&(1<<uint(i&63)) != 0 {
+		if words[i>>6]&(1<<uint(i&63)) != 0 { //nolint:gosec // G115: bit index fits in uint
 			ith++
 			if ith%32 == 0 {
 				selects = append(selects, int32(i)) // #nosec G115 -- bit position fits in int32
