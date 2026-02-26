@@ -11,17 +11,6 @@ import (
 	"github.com/xflash-panda/acl-engine/pkg/outbound"
 )
 
-// mockResolver is a simple resolver for testing
-type mockResolver struct {
-	ipv4 net.IP
-	ipv6 net.IP
-	err  error
-}
-
-func (m *mockResolver) Resolve(host string) (net.IP, net.IP, error) {
-	return m.ipv4, m.ipv6, m.err
-}
-
 func TestNew(t *testing.T) {
 	rules := `
 direct(192.168.0.0/16)
@@ -45,14 +34,6 @@ func TestNewWithOptions(t *testing.T) {
 		r, err := New(rules, outbounds, geoLoader, WithCacheSize(2048))
 		require.NoError(t, err)
 		require.NotNil(t, r)
-	})
-
-	t.Run("with resolver", func(t *testing.T) {
-		resolver := &mockResolver{ipv4: net.ParseIP("1.2.3.4")}
-		r, err := New(rules, outbounds, geoLoader, WithResolver(resolver))
-		require.NoError(t, err)
-		require.NotNil(t, r)
-		assert.NotNil(t, r.resolver)
 	})
 }
 
@@ -171,39 +152,6 @@ func TestRouterDialTCP(t *testing.T) {
 	_ = conn.Close()
 }
 
-func TestRouterDialTCPWithResolver(t *testing.T) {
-	// Create a local TCP server
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	defer func() { _ = listener.Close() }()
-
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
-			_ = conn.Close()
-		}
-	}()
-
-	addr := listener.Addr().(*net.TCPAddr)
-
-	rules := `direct(all)`
-	resolver := &mockResolver{ipv4: addr.IP}
-
-	r, err := New(rules, nil, &acl.NilGeoLoader{}, WithResolver(resolver))
-	require.NoError(t, err)
-
-	conn, err := r.DialTCP(&outbound.Addr{
-		Host: "test.local",
-		Port: uint16(addr.Port), //nolint:gosec // test code
-	})
-	require.NoError(t, err)
-	require.NotNil(t, conn)
-	_ = conn.Close()
-}
-
 func TestRouterDialUDP(t *testing.T) {
 	rules := `direct(all)`
 	r, err := New(rules, nil, &acl.NilGeoLoader{})
@@ -235,14 +183,12 @@ func TestRouterIPMatching(t *testing.T) {
 reject(192.168.0.0/16)
 direct(all)
 `
-	// Use a resolver that returns the IP
-	resolver := &mockResolver{ipv4: net.ParseIP("192.168.1.1")}
-	r, err := New(rules, nil, &acl.NilGeoLoader{}, WithResolver(resolver))
+	r, err := New(rules, nil, &acl.NilGeoLoader{})
 	require.NoError(t, err)
 
 	// Should be rejected because 192.168.1.1 matches 192.168.0.0/16
 	_, err = r.DialTCP(&outbound.Addr{
-		Host: "test.local",
+		Host: "192.168.1.1",
 		Port: 80,
 	})
 	require.Error(t, err)
@@ -250,26 +196,21 @@ direct(all)
 
 func TestRouterResolveWithIPHost(t *testing.T) {
 	rules := `direct(all)`
-	resolver := &mockResolver{ipv4: net.ParseIP("1.2.3.4")}
-
-	r, err := New(rules, nil, &acl.NilGeoLoader{}, WithResolver(resolver))
+	r, err := New(rules, nil, &acl.NilGeoLoader{})
 	require.NoError(t, err)
 
-	// When host is already an IP, should not call resolver
+	// When host is already an IP, should parse it directly
 	addr := &outbound.Addr{Host: "192.168.1.1", Port: 80}
 	r.resolve(addr)
 
 	assert.NotNil(t, addr.ResolveInfo)
 	assert.NotNil(t, addr.ResolveInfo.IPv4)
-	// Should parse the IP directly, not use resolver's IP
 	assert.True(t, net.ParseIP("192.168.1.1").Equal(addr.ResolveInfo.IPv4))
 }
 
 func TestRouterResolveIPv6(t *testing.T) {
 	rules := `direct(all)`
-	resolver := &mockResolver{}
-
-	r, err := New(rules, nil, &acl.NilGeoLoader{}, WithResolver(resolver))
+	r, err := New(rules, nil, &acl.NilGeoLoader{})
 	require.NoError(t, err)
 
 	addr := &outbound.Addr{Host: "2001:db8::1", Port: 80}

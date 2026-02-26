@@ -5,11 +5,9 @@ import (
 	"net"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/xflash-panda/acl-engine/pkg/acl"
 	"github.com/xflash-panda/acl-engine/pkg/outbound"
-	"github.com/xflash-panda/acl-engine/pkg/resolver"
 	"github.com/xflash-panda/acl-engine/pkg/router"
 
 	"gopkg.in/yaml.v3"
@@ -25,7 +23,6 @@ type BuildOptions struct {
 // Config is the top-level configuration structure.
 type Config struct {
 	Outbounds []OutboundConfig `yaml:"outbounds"`
-	Resolver  *ResolverConfig  `yaml:"resolver"`
 	ACL       ACLConfig        `yaml:"acl"`
 }
 
@@ -58,37 +55,6 @@ type SOCKS5Config struct {
 type HTTPConfig struct {
 	URL      string `yaml:"url"` // http://[user:pass@]host:port or https://...
 	Insecure bool   `yaml:"insecure"`
-}
-
-// ResolverConfig configures the DNS resolver.
-type ResolverConfig struct {
-	Type  string       `yaml:"type"` // system, udp, tcp, tls, https
-	UDP   *DNSConfig   `yaml:"udp"`
-	TCP   *DNSConfig   `yaml:"tcp"`
-	TLS   *TLSConfig   `yaml:"tls"`
-	HTTPS *HTTPSConfig `yaml:"https"`
-}
-
-// DNSConfig configures a UDP or TCP DNS resolver.
-type DNSConfig struct {
-	Addr    string        `yaml:"addr"`
-	Timeout time.Duration `yaml:"timeout"`
-}
-
-// TLSConfig configures a DNS-over-TLS resolver.
-type TLSConfig struct {
-	Addr     string        `yaml:"addr"`
-	Timeout  time.Duration `yaml:"timeout"`
-	SNI      string        `yaml:"sni"`
-	Insecure bool          `yaml:"insecure"`
-}
-
-// HTTPSConfig configures a DNS-over-HTTPS resolver.
-type HTTPSConfig struct {
-	Addr     string        `yaml:"addr"`
-	Timeout  time.Duration `yaml:"timeout"`
-	SNI      string        `yaml:"sni"`
-	Insecure bool          `yaml:"insecure"`
 }
 
 // ACLConfig configures ACL rules.
@@ -137,13 +103,6 @@ func Build(cfg *Config, bopts *BuildOptions) (*router.Router, error) {
 	var opts []router.Option
 	if bopts != nil && bopts.CacheSize > 0 {
 		opts = append(opts, router.WithCacheSize(bopts.CacheSize))
-	}
-	if cfg.Resolver != nil {
-		r, err := buildResolver(cfg.Resolver)
-		if err != nil {
-			return nil, fmt.Errorf("build resolver: %w", err)
-		}
-		opts = append(opts, router.WithResolver(r))
 	}
 
 	return router.New(rules, entries, geoLoader, opts...)
@@ -248,47 +207,6 @@ func buildHTTP(cfg *HTTPConfig) (outbound.Outbound, error) {
 		return nil, fmt.Errorf("http url is required")
 	}
 	return outbound.NewHTTP(cfg.URL, cfg.Insecure)
-}
-
-func buildResolver(cfg *ResolverConfig) (resolver.Resolver, error) {
-	switch strings.ToLower(cfg.Type) {
-	case "", "system":
-		return resolver.NewSystem(), nil
-	case "udp":
-		if cfg.UDP == nil {
-			return nil, fmt.Errorf("udp config is required for resolver type udp")
-		}
-		if cfg.UDP.Addr == "" {
-			return nil, fmt.Errorf("udp addr is required")
-		}
-		return resolver.NewUDP(cfg.UDP.Addr, cfg.UDP.Timeout), nil
-	case "tcp":
-		if cfg.TCP == nil {
-			return nil, fmt.Errorf("tcp config is required for resolver type tcp")
-		}
-		if cfg.TCP.Addr == "" {
-			return nil, fmt.Errorf("tcp addr is required")
-		}
-		return resolver.NewTCP(cfg.TCP.Addr, cfg.TCP.Timeout), nil
-	case "tls":
-		if cfg.TLS == nil {
-			return nil, fmt.Errorf("tls config is required for resolver type tls")
-		}
-		if cfg.TLS.Addr == "" {
-			return nil, fmt.Errorf("tls addr is required")
-		}
-		return resolver.NewTLS(cfg.TLS.Addr, cfg.TLS.Timeout, cfg.TLS.SNI, cfg.TLS.Insecure), nil
-	case "https":
-		if cfg.HTTPS == nil {
-			return nil, fmt.Errorf("https config is required for resolver type https")
-		}
-		if cfg.HTTPS.Addr == "" {
-			return nil, fmt.Errorf("https addr is required")
-		}
-		return resolver.NewHTTPS(cfg.HTTPS.Addr, cfg.HTTPS.Timeout, cfg.HTTPS.SNI, cfg.HTTPS.Insecure), nil
-	default:
-		return nil, fmt.Errorf("unknown resolver type: %q (valid: system, udp, tcp, tls, https)", cfg.Type)
-	}
 }
 
 func buildRules(cfg *ACLConfig) (string, error) {

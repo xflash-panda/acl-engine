@@ -7,7 +7,6 @@ import (
 
 	"github.com/xflash-panda/acl-engine/pkg/acl"
 	"github.com/xflash-panda/acl-engine/pkg/outbound"
-	"github.com/xflash-panda/acl-engine/pkg/resolver"
 )
 
 const (
@@ -19,7 +18,6 @@ const (
 type Router struct {
 	ruleSet  acl.CompiledRuleSet[outbound.Outbound]
 	default_ outbound.Outbound
-	resolver resolver.Resolver
 }
 
 // Option configures the Router.
@@ -27,21 +25,12 @@ type Option func(*routerOptions)
 
 type routerOptions struct {
 	cacheSize int
-	resolver  resolver.Resolver
 }
 
 // WithCacheSize sets the LRU cache size for rule matching results.
 func WithCacheSize(size int) Option {
 	return func(o *routerOptions) {
 		o.cacheSize = size
-	}
-}
-
-// WithResolver sets a custom DNS resolver for the router.
-// If set, the router will resolve hostnames before matching ACL rules.
-func WithResolver(r resolver.Resolver) Option {
-	return func(o *routerOptions) {
-		o.resolver = r
 	}
 }
 
@@ -75,7 +64,6 @@ func New(rules string, outbounds []OutboundEntry, geoLoader acl.GeoLoader, opts 
 	return &Router{
 		ruleSet:  rs,
 		default_: obMap["default"],
-		resolver: options.resolver,
 	}, nil
 }
 
@@ -111,9 +99,6 @@ func outboundsToMap(outbounds []OutboundEntry) map[string]outbound.Outbound {
 }
 
 func (r *Router) resolve(addr *outbound.Addr) {
-	if r.resolver == nil {
-		return
-	}
 	// Check if the host is already an IP address
 	if ip := net.ParseIP(addr.Host); ip != nil {
 		addr.ResolveInfo = &outbound.ResolveInfo{}
@@ -124,12 +109,25 @@ func (r *Router) resolve(addr *outbound.Addr) {
 		}
 		return
 	}
-	ipv4, ipv6, err := r.resolver.Resolve(addr.Host)
-	addr.ResolveInfo = &outbound.ResolveInfo{
-		IPv4: ipv4,
-		IPv6: ipv6,
-		Err:  err,
+	// Use system DNS
+	ips, err := net.LookupIP(addr.Host)
+	if err != nil {
+		addr.ResolveInfo = &outbound.ResolveInfo{Err: err}
+		return
 	}
+	ri := &outbound.ResolveInfo{}
+	for _, ip := range ips {
+		if ip4 := ip.To4(); ip4 != nil {
+			if ri.IPv4 == nil {
+				ri.IPv4 = ip4
+			}
+		} else {
+			if ri.IPv6 == nil {
+				ri.IPv6 = ip
+			}
+		}
+	}
+	addr.ResolveInfo = ri
 }
 
 func (r *Router) match(addr *outbound.Addr, proto acl.Protocol) outbound.Outbound {

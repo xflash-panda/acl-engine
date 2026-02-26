@@ -79,83 +79,6 @@ acl:
 	assert.NotNil(t, r)
 }
 
-func TestParseWithResolver(t *testing.T) {
-	tests := []struct {
-		name string
-		yaml string
-	}{
-		{
-			name: "system",
-			yaml: `
-resolver:
-  type: system
-acl:
-  inline:
-    - direct(all)
-`,
-		},
-		{
-			name: "udp",
-			yaml: `
-resolver:
-  type: udp
-  udp:
-    addr: 8.8.8.8:53
-    timeout: 5s
-acl:
-  inline:
-    - direct(all)
-`,
-		},
-		{
-			name: "tcp",
-			yaml: `
-resolver:
-  type: tcp
-  tcp:
-    addr: 8.8.8.8:53
-acl:
-  inline:
-    - direct(all)
-`,
-		},
-		{
-			name: "tls",
-			yaml: `
-resolver:
-  type: tls
-  tls:
-    addr: 1.1.1.1:853
-    sni: cloudflare-dns.com
-    insecure: false
-acl:
-  inline:
-    - direct(all)
-`,
-		},
-		{
-			name: "https",
-			yaml: `
-resolver:
-  type: https
-  https:
-    addr: https://dns.google/dns-query
-    timeout: 5s
-acl:
-  inline:
-    - direct(all)
-`,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r, err := Parse([]byte(tt.yaml), nil)
-			require.NoError(t, err)
-			assert.NotNil(t, r)
-		})
-	}
-}
-
 func TestBuildWithCacheSize(t *testing.T) {
 	yaml := `
 acl:
@@ -281,17 +204,6 @@ acl:
     - direct(all)
 `,
 			wantErr: "http url is required",
-		},
-		{
-			name: "unknown resolver type",
-			yaml: `
-resolver:
-  type: unknown
-acl:
-  inline:
-    - direct(all)
-`,
-			wantErr: "unknown resolver type",
 		},
 		{
 			name: "both file and inline",

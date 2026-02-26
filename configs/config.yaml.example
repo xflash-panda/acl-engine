@@ -58,40 +58,6 @@ outbounds:
     type: reject
 
 # -----------------------------------------------------------------------------
-# DNS Resolver - Used to resolve hostnames for ACL rule matching
-# -----------------------------------------------------------------------------
-# If not configured, the router will not resolve hostnames before matching.
-# When configured, resolved IPs are used for IP-based and GeoIP rule matching.
-# -----------------------------------------------------------------------------
-resolver:
-  # Resolver type: system, udp, tcp, tls, https
-  type: udp
-
-  # --- UDP DNS ---
-  udp:
-    addr: 8.8.8.8:53
-    timeout: 5s
-
-  # --- TCP DNS ---
-  # tcp:
-  #   addr: 8.8.8.8:53
-  #   timeout: 5s
-
-  # --- DNS-over-TLS ---
-  # tls:
-  #   addr: 1.1.1.1:853
-  #   timeout: 5s
-  #   sni: cloudflare-dns.com
-  #   insecure: false
-
-  # --- DNS-over-HTTPS ---
-  # https:
-  #   addr: https://dns.google/dns-query
-  #   timeout: 5s
-  #   sni: dns.google
-  #   insecure: false
-
-# -----------------------------------------------------------------------------
 # ACL Rules - Traffic routing rules
 # -----------------------------------------------------------------------------
 # Rule format: outbound(address[, protocol/port][, hijackAddress])

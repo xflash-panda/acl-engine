@@ -10,7 +10,6 @@ A high-performance Access Control List (ACL) engine for Go, extracted from [Hyst
 - **IP hijacking**: Redirect matched traffic to different IPs
 - **LRU caching**: High-performance match result caching
 - **Pluggable outbounds**: Direct, SOCKS5, HTTP proxy with TCP Fast Open support
-- **DNS resolvers**: System, UDP, TCP, TLS (DoT), HTTPS (DoH)
 - **ACL Router**: Combines ACL rules with outbounds for complete traffic routing
 
 ## Installation
@@ -33,7 +32,6 @@ import (
 
     "github.com/xflash-panda/acl-engine/pkg/acl"
     "github.com/xflash-panda/acl-engine/pkg/outbound"
-    "github.com/xflash-panda/acl-engine/pkg/resolver"
     "github.com/xflash-panda/acl-engine/pkg/router"
 )
 
@@ -70,12 +68,11 @@ direct(all)
         GeoSiteURL:    acl.MetaCubeXGeoSiteDatURL,
     }
 
-    // Create router with custom DNS resolver
+    // Create router (uses system DNS for hostname resolution)
     r, err := router.New(
         rules,
         outbounds,
         geoLoader,
-        router.WithResolver(resolver.NewUDP("8.8.8.8", 0)),
     )
     if err != nil {
         panic(err)
@@ -159,7 +156,6 @@ reject(geoip:cn, udp/443)
 pkg/
 ├── acl/         # ACL rule parsing and compilation
 ├── outbound/    # Outbound connection implementations
-├── resolver/    # DNS resolver implementations
 └── router/      # ACL-based traffic router
 ```
 
@@ -213,26 +209,6 @@ ob, _ := outbound.NewDirectWithOptions(outbound.DirectOptions{
 })
 ```
 
-### pkg/resolver
-
-Provides DNS resolver implementations:
-
-```go
-import "github.com/xflash-panda/acl-engine/pkg/resolver"
-
-// Interface
-type Resolver interface {
-    Resolve(host string) (ipv4, ipv6 net.IP, err error)
-}
-
-// Implementations
-resolver.NewSystem()                              // System DNS
-resolver.NewUDP(addr, timeout)                    // UDP DNS
-resolver.NewTCP(addr, timeout)                    // TCP DNS
-resolver.NewTLS(addr, timeout, sni, insecure)     // DNS-over-TLS
-resolver.NewHTTPS(addr, timeout, sni, insecure)   // DNS-over-HTTPS
-```
-
 ### pkg/router
 
 Combines ACL rules with outbounds for traffic routing:
@@ -243,7 +219,6 @@ import "github.com/xflash-panda/acl-engine/pkg/router"
 // Create router
 r, _ := router.New(rules, outbounds, geoLoader,
     router.WithCacheSize(2048),
-    router.WithResolver(resolver.NewUDP("8.8.8.8", 0)),
 )
 
 // Or from file
