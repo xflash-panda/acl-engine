@@ -29,6 +29,7 @@ outbounds:
       # bindIPv6: "::1"
 
       # Bind outgoing connections to a specific network device (Linux only)
+      # NOTE: bindDevice is mutually exclusive with bindIPv4/bindIPv6
       # bindDevice: eth0
 
       # Enable TCP Fast Open for optimized connection establishment

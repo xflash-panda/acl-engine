@@ -211,6 +211,36 @@ acl:
 			wantErr: "unknown direct mode",
 		},
 		{
+			name: "bindDevice with bindIPv4",
+			yaml: `
+outbounds:
+  - name: foo
+    type: direct
+    direct:
+      bindIPv4: 1.2.3.4
+      bindDevice: eth0
+acl:
+  inline:
+    - direct(all)
+`,
+			wantErr: "bindDevice is mutually exclusive with bindIPv4/bindIPv6",
+		},
+		{
+			name: "bindDevice with bindIPv6",
+			yaml: `
+outbounds:
+  - name: foo
+    type: direct
+    direct:
+      bindIPv6: "::1"
+      bindDevice: eth0
+acl:
+  inline:
+    - direct(all)
+`,
+			wantErr: "bindDevice is mutually exclusive with bindIPv4/bindIPv6",
+		},
+		{
 			name: "invalid bindIPv4",
 			yaml: `
 outbounds:

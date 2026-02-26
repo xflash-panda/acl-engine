@@ -190,6 +190,9 @@ func buildDirect(cfg *DirectConfig) (outbound.Outbound, error) {
 			return nil, err
 		}
 		opts.Mode = mode
+		if cfg.BindDevice != "" && (cfg.BindIPv4 != "" || cfg.BindIPv6 != "") {
+			return nil, fmt.Errorf("bindDevice is mutually exclusive with bindIPv4/bindIPv6")
+		}
 		if cfg.BindIPv4 != "" {
 			ip := net.ParseIP(cfg.BindIPv4)
 			if ip == nil {
