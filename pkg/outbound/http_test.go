@@ -144,7 +144,7 @@ func TestHTTP_TLSServerName(t *testing.T) {
 			}
 			defer func() { _ = conn.Close() }()
 			// Use tls.Server with GetConfigForClient to capture SNI
-			tlsConn := tls.Server(conn, &tls.Config{
+			tlsConn := tls.Server(conn, &tls.Config{ //nolint:gosec // test code, TLS version irrelevant
 				GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
 					sniCh <- hello.ServerName
 					return nil, nil
