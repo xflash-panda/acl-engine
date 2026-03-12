@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/xflash-panda/acl-engine/pkg/acl"
 	"github.com/xflash-panda/acl-engine/pkg/outbound"
@@ -37,11 +38,13 @@ type OutboundConfig struct {
 
 // DirectConfig configures a direct outbound.
 type DirectConfig struct {
-	Mode       string `yaml:"mode"`       // auto, 64, 46, 6, 4
-	BindIPv4   string `yaml:"bindIPv4"`   // IPv4 address to bind
-	BindIPv6   string `yaml:"bindIPv6"`   // IPv6 address to bind
-	BindDevice string `yaml:"bindDevice"` // network device name (Linux only)
-	FastOpen   bool   `yaml:"fastOpen"`   // TCP Fast Open
+	Mode         string `yaml:"mode"`         // auto, 64, 46, 6, 4
+	BindIPv4     string `yaml:"bindIPv4"`     // IPv4 address to bind
+	BindIPv6     string `yaml:"bindIPv6"`     // IPv6 address to bind
+	BindDevice   string `yaml:"bindDevice"`   // network device name (Linux only)
+	FastOpen     bool   `yaml:"fastOpen"`     // TCP Fast Open
+	TCPNoDelay   *bool  `yaml:"tcpNodelay"`   // TCP_NODELAY, default true
+	TCPKeepalive *int   `yaml:"tcpKeepalive"` // keepalive interval in seconds, nil=60, 0=disable
 }
 
 // SOCKS5Config configures a SOCKS5 outbound.
@@ -168,6 +171,14 @@ func buildDirect(cfg *DirectConfig) (outbound.Outbound, error) {
 		}
 		opts.DeviceName = cfg.BindDevice
 		opts.FastOpen = cfg.FastOpen
+		opts.TCPNoDelay = cfg.TCPNoDelay
+		if cfg.TCPKeepalive != nil {
+			if *cfg.TCPKeepalive == 0 {
+				opts.TCPKeepaliveIntvl = -1 // disable
+			} else {
+				opts.TCPKeepaliveIntvl = time.Duration(*cfg.TCPKeepalive) * time.Second
+			}
+		}
 	}
 	return outbound.NewDirectWithOptions(opts)
 }

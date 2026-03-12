@@ -2,11 +2,25 @@ package outbound
 
 import (
 	"net"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func getTCPNoDelay(t *testing.T, raw syscall.RawConn) bool {
+	t.Helper()
+	var nodelay int
+	var innerErr error
+	err := raw.Control(func(fd uintptr) {
+		nodelay, innerErr = syscall.GetsockoptInt(int(fd), syscall.IPPROTO_TCP, syscall.TCP_NODELAY) //nolint:gosec // test code
+	})
+	require.NoError(t, err)
+	require.NoError(t, innerErr)
+	return nodelay != 0
+}
 
 func TestNewDirect(t *testing.T) {
 	modes := []DirectMode{
@@ -198,6 +212,133 @@ func TestDirectModes(t *testing.T) {
 		require.NotNil(t, conn)
 		_ = conn.Close()
 	})
+}
+
+func TestNewDirectWithOptions_TCPNodelay(t *testing.T) {
+	// Create a local TCP server
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = listener.Close() }()
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+
+	addr := listener.Addr().(*net.TCPAddr)
+
+	t.Run("default enables nodelay", func(t *testing.T) {
+		ob, err := NewDirectWithOptions(DirectOptions{
+			Mode: DirectModeAuto,
+		})
+		require.NoError(t, err)
+
+		conn, err := ob.DialTCP(&Addr{
+			Host:        addr.IP.String(),
+			Port:        uint16(addr.Port), //nolint:gosec // test code
+			ResolveInfo: &ResolveInfo{IPv4: addr.IP},
+		})
+		require.NoError(t, err)
+		defer func() { _ = conn.Close() }()
+
+		tcpConn, ok := conn.(*net.TCPConn)
+		require.True(t, ok)
+		// Default TCPNoDelay should be true (Go default)
+		raw, err := tcpConn.SyscallConn()
+		require.NoError(t, err)
+		nodelay := getTCPNoDelay(t, raw)
+		assert.True(t, nodelay, "TCPNoDelay should be enabled by default")
+	})
+
+	t.Run("explicitly disable nodelay", func(t *testing.T) {
+		ob, err := NewDirectWithOptions(DirectOptions{
+			Mode:       DirectModeAuto,
+			TCPNoDelay: boolPtr(false),
+		})
+		require.NoError(t, err)
+
+		conn, err := ob.DialTCP(&Addr{
+			Host:        addr.IP.String(),
+			Port:        uint16(addr.Port), //nolint:gosec // test code
+			ResolveInfo: &ResolveInfo{IPv4: addr.IP},
+		})
+		require.NoError(t, err)
+		defer func() { _ = conn.Close() }()
+
+		tcpConn, ok := conn.(*net.TCPConn)
+		require.True(t, ok)
+		raw, err := tcpConn.SyscallConn()
+		require.NoError(t, err)
+		nodelay := getTCPNoDelay(t, raw)
+		assert.False(t, nodelay, "TCPNoDelay should be disabled when explicitly set to false")
+	})
+
+	t.Run("explicitly enable nodelay", func(t *testing.T) {
+		ob, err := NewDirectWithOptions(DirectOptions{
+			Mode:       DirectModeAuto,
+			TCPNoDelay: boolPtr(true),
+		})
+		require.NoError(t, err)
+
+		conn, err := ob.DialTCP(&Addr{
+			Host:        addr.IP.String(),
+			Port:        uint16(addr.Port), //nolint:gosec // test code
+			ResolveInfo: &ResolveInfo{IPv4: addr.IP},
+		})
+		require.NoError(t, err)
+		defer func() { _ = conn.Close() }()
+
+		tcpConn, ok := conn.(*net.TCPConn)
+		require.True(t, ok)
+		raw, err := tcpConn.SyscallConn()
+		require.NoError(t, err)
+		nodelay := getTCPNoDelay(t, raw)
+		assert.True(t, nodelay, "TCPNoDelay should be enabled when explicitly set to true")
+	})
+}
+
+func TestNewDirectWithOptions_TCPKeepalive(t *testing.T) {
+	t.Run("default keepalive", func(t *testing.T) {
+		ob, err := NewDirectWithOptions(DirectOptions{
+			Mode: DirectModeAuto,
+		})
+		require.NoError(t, err)
+		d, ok := ob.(*Direct)
+		require.True(t, ok)
+		// Default keepalive should be 60 seconds
+		assert.Equal(t, 60*time.Second, d.TCPKeepalive)
+	})
+
+	t.Run("custom keepalive", func(t *testing.T) {
+		ob, err := NewDirectWithOptions(DirectOptions{
+			Mode:              DirectModeAuto,
+			TCPKeepaliveIntvl: 30 * time.Second,
+		})
+		require.NoError(t, err)
+		d, ok := ob.(*Direct)
+		require.True(t, ok)
+		assert.Equal(t, 30*time.Second, d.TCPKeepalive)
+	})
+
+	t.Run("disable keepalive", func(t *testing.T) {
+		ob, err := NewDirectWithOptions(DirectOptions{
+			Mode:              DirectModeAuto,
+			TCPKeepaliveIntvl: -1,
+		})
+		require.NoError(t, err)
+		d, ok := ob.(*Direct)
+		require.True(t, ok)
+		assert.Equal(t, time.Duration(-1), d.TCPKeepalive)
+	})
+}
+
+func boolPtr(b bool) *bool {
+	return &b
 }
 
 func TestErrorTypes(t *testing.T) {

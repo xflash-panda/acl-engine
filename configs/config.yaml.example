@@ -35,6 +35,14 @@ outbounds:
       # Enable TCP Fast Open for optimized connection establishment
       fastOpen: false
 
+      # Enable TCP_NODELAY (disable Nagle's algorithm) for lower latency.
+      # Default: true
+      tcpNodelay: true
+
+      # TCP keepalive interval in seconds. Set to enable periodic keepalive probes.
+      # Default: 60 (seconds). Set to 0 to disable keepalive.
+      tcpKeepalive: 60
+
   # --- SOCKS5 proxy outbound ---
   - name: my-socks5
     type: socks5

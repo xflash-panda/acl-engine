@@ -89,7 +89,7 @@ func (o *HTTP) dial() (net.Conn, error) {
 	if o.HTTPS {
 		conn = tls.Client(conn, &tls.Config{
 			InsecureSkipVerify: o.Insecure, //nolint:gosec // user configurable
-			ServerName:         o.Addr,
+			ServerName:         o.ServerName,
 		})
 	}
 	return conn, nil

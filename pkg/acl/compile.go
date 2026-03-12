@@ -54,6 +54,7 @@ type compiledRule[O Outbound] struct {
 	Outbound      O
 	HostMatcher   hostMatcher
 	Protocol      Protocol
+	HasPortFilter bool
 	StartPort     uint16
 	EndPort       uint16
 	HijackAddress net.IP
@@ -63,7 +64,7 @@ func (r *compiledRule[O]) Match(host HostInfo, proto Protocol, port uint16) bool
 	if r.Protocol != ProtocolBoth && r.Protocol != proto {
 		return false
 	}
-	if r.StartPort != 0 && (port < r.StartPort || port > r.EndPort) {
+	if r.HasPortFilter && (port < r.StartPort || port > r.EndPort) {
 		return false
 	}
 	return r.HostMatcher.Match(host)
@@ -140,7 +141,7 @@ func Compile[O Outbound](rules []TextRule, outbounds map[string]O,
 		if errStr != "" {
 			return nil, &CompilationError{rule.LineNum, errStr}
 		}
-		proto, startPort, endPort, ok := parseProtoPort(rule.ProtoPort)
+		proto, hasPortFilter, startPort, endPort, ok := parseProtoPort(rule.ProtoPort)
 		if !ok {
 			return nil, &CompilationError{rule.LineNum, fmt.Sprintf("invalid protocol/port: %s", rule.ProtoPort)}
 		}
@@ -151,7 +152,7 @@ func Compile[O Outbound](rules []TextRule, outbounds map[string]O,
 				return nil, &CompilationError{rule.LineNum, fmt.Sprintf("invalid hijack address (must be an IP address): %s", rule.HijackAddress)}
 			}
 		}
-		compiledRules[i] = compiledRule[O]{outbound, hm, proto, startPort, endPort, hijackAddress}
+		compiledRules[i] = compiledRule[O]{outbound, hm, proto, hasPortFilter, startPort, endPort, hijackAddress}
 	}
 	cache, err := lru.New[matchResultCacheKey, matchResult[O]](cacheSize)
 	if err != nil {
@@ -172,26 +173,24 @@ func Compile[O Outbound](rules []TextRule, outbounds map[string]O,
 //	[empty] (same as *)
 //
 // proto must be either "tcp" or "udp", case-insensitive.
-func parseProtoPort(protoPort string) (Protocol, uint16, uint16, bool) {
+func parseProtoPort(protoPort string) (proto Protocol, hasPortFilter bool, startPort uint16, endPort uint16, ok bool) {
 	protoPort = strings.ToLower(protoPort)
 	if protoPort == "" || protoPort == "*" || protoPort == "*/*" {
-		return ProtocolBoth, 0, 0, true
+		return ProtocolBoth, false, 0, 0, true
 	}
 	parts := strings.SplitN(protoPort, "/", 2)
 	if len(parts) == 1 {
 		// No port, only protocol
 		switch parts[0] {
 		case "tcp":
-			return ProtocolTCP, 0, 0, true
+			return ProtocolTCP, false, 0, 0, true
 		case "udp":
-			return ProtocolUDP, 0, 0, true
+			return ProtocolUDP, false, 0, 0, true
 		default:
-			return ProtocolBoth, 0, 0, false
+			return ProtocolBoth, false, 0, 0, false
 		}
 	} else {
 		// Both protocol and port
-		var proto Protocol
-		var startPort, endPort uint16
 		switch parts[0] {
 		case "tcp":
 			proto = ProtocolTCP
@@ -200,35 +199,36 @@ func parseProtoPort(protoPort string) (Protocol, uint16, uint16, bool) {
 		case "*":
 			proto = ProtocolBoth
 		default:
-			return ProtocolBoth, 0, 0, false
+			return ProtocolBoth, false, 0, 0, false
 		}
-		if parts[1] != "*" {
-			// We allow either a single port or a range (e.g. "1000-2000")
-			ports := strings.SplitN(strings.TrimSpace(parts[1]), "-", 2)
-			if len(ports) == 1 {
-				p64, err := strconv.ParseUint(parts[1], 10, 16)
-				if err != nil {
-					return ProtocolBoth, 0, 0, false
-				}
-				startPort = uint16(p64)
-				endPort = startPort
-			} else {
-				p64, err := strconv.ParseUint(ports[0], 10, 16)
-				if err != nil {
-					return ProtocolBoth, 0, 0, false
-				}
-				startPort = uint16(p64)
-				p64, err = strconv.ParseUint(ports[1], 10, 16)
-				if err != nil {
-					return ProtocolBoth, 0, 0, false
-				}
-				endPort = uint16(p64)
-				if startPort > endPort {
-					return ProtocolBoth, 0, 0, false
-				}
+		if parts[1] == "*" {
+			return proto, false, 0, 0, true
+		}
+		// We allow either a single port or a range (e.g. "1000-2000")
+		ports := strings.SplitN(strings.TrimSpace(parts[1]), "-", 2)
+		if len(ports) == 1 {
+			p64, err := strconv.ParseUint(parts[1], 10, 16)
+			if err != nil {
+				return ProtocolBoth, false, 0, 0, false
+			}
+			startPort = uint16(p64)
+			endPort = startPort
+		} else {
+			p64, err := strconv.ParseUint(ports[0], 10, 16)
+			if err != nil {
+				return ProtocolBoth, false, 0, 0, false
+			}
+			startPort = uint16(p64)
+			p64, err = strconv.ParseUint(ports[1], 10, 16)
+			if err != nil {
+				return ProtocolBoth, false, 0, 0, false
+			}
+			endPort = uint16(p64)
+			if startPort > endPort {
+				return ProtocolBoth, false, 0, 0, false
 			}
 		}
-		return proto, startPort, endPort, true
+		return proto, true, startPort, endPort, true
 	}
 }
 

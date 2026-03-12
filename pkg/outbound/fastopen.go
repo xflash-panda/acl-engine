@@ -39,6 +39,7 @@ type fastOpenConn struct {
 	conn      net.Conn
 	connLock  sync.RWMutex
 	readyChan chan struct{}
+	closeOnce sync.Once
 
 	// States before connection ready
 	deadline      *time.Time
@@ -99,7 +100,7 @@ func (c *fastOpenConn) Write(b []byte) (n int, err error) {
 
 	conn, err = c.dialer.Dial(c.network, c.address, b)
 	if err != nil {
-		close(c.readyChan)
+		c.closeOnce.Do(func() { close(c.readyChan) })
 		return 0, err
 	}
 
@@ -115,13 +116,13 @@ func (c *fastOpenConn) Write(b []byte) (n int, err error) {
 	}
 
 	c.conn = conn
-	close(c.readyChan)
+	c.closeOnce.Do(func() { close(c.readyChan) })
 	return len(b), nil
 }
 
 func (c *fastOpenConn) Close() error {
-	c.connLock.RLock()
-	defer c.connLock.RUnlock()
+	c.connLock.Lock()
+	defer c.connLock.Unlock()
 
 	if c.isClosedBeforeReady() {
 		return net.ErrClosed
@@ -131,7 +132,7 @@ func (c *fastOpenConn) Close() error {
 		return c.conn.Close()
 	}
 
-	close(c.readyChan)
+	c.closeOnce.Do(func() { close(c.readyChan) })
 	return nil
 }
 
@@ -176,8 +177,8 @@ func (c *fastOpenConn) RemoteAddr() net.Addr {
 }
 
 func (c *fastOpenConn) SetDeadline(t time.Time) error {
-	c.connLock.RLock()
-	defer c.connLock.RUnlock()
+	c.connLock.Lock()
+	defer c.connLock.Unlock()
 
 	c.deadline = &t
 
@@ -193,8 +194,8 @@ func (c *fastOpenConn) SetDeadline(t time.Time) error {
 }
 
 func (c *fastOpenConn) SetReadDeadline(t time.Time) error {
-	c.connLock.RLock()
-	defer c.connLock.RUnlock()
+	c.connLock.Lock()
+	defer c.connLock.Unlock()
 
 	c.readDeadline = &t
 
@@ -210,8 +211,8 @@ func (c *fastOpenConn) SetReadDeadline(t time.Time) error {
 }
 
 func (c *fastOpenConn) SetWriteDeadline(t time.Time) error {
-	c.connLock.RLock()
-	defer c.connLock.RUnlock()
+	c.connLock.Lock()
+	defer c.connLock.Unlock()
 
 	c.writeDeadline = &t
 

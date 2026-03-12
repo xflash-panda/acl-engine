@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xflash-panda/acl-engine/pkg/outbound"
+	"gopkg.in/yaml.v3"
 )
 
 func TestParseDirectMode(t *testing.T) {
@@ -88,6 +89,133 @@ acl:
 	r, err := Parse([]byte(yaml), &BuildOptions{CacheSize: 2048})
 	require.NoError(t, err)
 	assert.NotNil(t, r)
+}
+
+func TestParseTCPOptions(t *testing.T) {
+	t.Run("tcpNodelay defaults to true", func(t *testing.T) {
+		yamlData := `
+outbounds:
+  - name: d
+    type: direct
+acl:
+  inline:
+    - d(all)
+`
+		var cfg Config
+		require.NoError(t, yaml.Unmarshal([]byte(yamlData), &cfg))
+		require.Len(t, cfg.Outbounds, 1)
+		// When not specified, TCPNoDelay should be nil (buildDirect defaults to true)
+		assert.Nil(t, cfg.Outbounds[0].Direct)
+	})
+
+	t.Run("tcpNodelay explicit false", func(t *testing.T) {
+		yamlData := `
+outbounds:
+  - name: d
+    type: direct
+    direct:
+      tcpNodelay: false
+acl:
+  inline:
+    - d(all)
+`
+		var cfg Config
+		require.NoError(t, yaml.Unmarshal([]byte(yamlData), &cfg))
+		require.NotNil(t, cfg.Outbounds[0].Direct)
+		require.NotNil(t, cfg.Outbounds[0].Direct.TCPNoDelay)
+		assert.False(t, *cfg.Outbounds[0].Direct.TCPNoDelay)
+	})
+
+	t.Run("tcpNodelay explicit true", func(t *testing.T) {
+		yamlData := `
+outbounds:
+  - name: d
+    type: direct
+    direct:
+      tcpNodelay: true
+acl:
+  inline:
+    - d(all)
+`
+		var cfg Config
+		require.NoError(t, yaml.Unmarshal([]byte(yamlData), &cfg))
+		require.NotNil(t, cfg.Outbounds[0].Direct)
+		require.NotNil(t, cfg.Outbounds[0].Direct.TCPNoDelay)
+		assert.True(t, *cfg.Outbounds[0].Direct.TCPNoDelay)
+	})
+
+	t.Run("tcpKeepalive default not set", func(t *testing.T) {
+		yamlData := `
+outbounds:
+  - name: d
+    type: direct
+    direct:
+      mode: auto
+acl:
+  inline:
+    - d(all)
+`
+		var cfg Config
+		require.NoError(t, yaml.Unmarshal([]byte(yamlData), &cfg))
+		require.NotNil(t, cfg.Outbounds[0].Direct)
+		// When not specified, TCPKeepalive should be nil (buildDirect defaults to 60)
+		assert.Nil(t, cfg.Outbounds[0].Direct.TCPKeepalive)
+	})
+
+	t.Run("tcpKeepalive custom value", func(t *testing.T) {
+		yamlData := `
+outbounds:
+  - name: d
+    type: direct
+    direct:
+      tcpKeepalive: 30
+acl:
+  inline:
+    - d(all)
+`
+		var cfg Config
+		require.NoError(t, yaml.Unmarshal([]byte(yamlData), &cfg))
+		require.NotNil(t, cfg.Outbounds[0].Direct)
+		require.NotNil(t, cfg.Outbounds[0].Direct.TCPKeepalive)
+		assert.Equal(t, 30, *cfg.Outbounds[0].Direct.TCPKeepalive)
+	})
+
+	t.Run("tcpKeepalive zero disables", func(t *testing.T) {
+		yamlData := `
+outbounds:
+  - name: d
+    type: direct
+    direct:
+      tcpKeepalive: 0
+acl:
+  inline:
+    - d(all)
+`
+		var cfg Config
+		require.NoError(t, yaml.Unmarshal([]byte(yamlData), &cfg))
+		require.NotNil(t, cfg.Outbounds[0].Direct)
+		require.NotNil(t, cfg.Outbounds[0].Direct.TCPKeepalive)
+		assert.Equal(t, 0, *cfg.Outbounds[0].Direct.TCPKeepalive)
+	})
+
+	t.Run("full config with tcp options", func(t *testing.T) {
+		yamlData := `
+outbounds:
+  - name: d
+    type: direct
+    direct:
+      mode: "46"
+      tcpNodelay: true
+      tcpKeepalive: 120
+      fastOpen: true
+acl:
+  inline:
+    - d(all)
+`
+		r, err := Parse([]byte(yamlData), nil)
+		require.NoError(t, err)
+		assert.NotNil(t, r)
+	})
 }
 
 func TestParseErrors(t *testing.T) {

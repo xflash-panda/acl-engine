@@ -3,6 +3,7 @@ package outbound
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"io"
 	"net"
 	"net/http"
@@ -116,6 +117,60 @@ func TestHTTP_DialTCP(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 	_ = conn.Close()
+}
+
+func TestHTTP_TLSServerName(t *testing.T) {
+	// Bug: TLS ServerName was set to o.Addr (host:port) instead of o.ServerName (host only).
+	// This causes TLS handshake failures for HTTPS proxies because SNI includes the port.
+	t.Run("ServerName should not contain port", func(t *testing.T) {
+		ob, err := NewHTTP("https://proxy.example.com:8443", false)
+		require.NoError(t, err)
+
+		h := ob.(*HTTP)
+		// ServerName must be hostname only, without port
+		assert.Equal(t, "proxy.example.com", h.ServerName)
+
+		// Verify that dial() actually uses ServerName (not Addr) for TLS
+		// by capturing the SNI from a real TLS handshake.
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		defer func() { _ = listener.Close() }()
+
+		sniCh := make(chan string, 1)
+		go func() {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			defer func() { _ = conn.Close() }()
+			// Use tls.Server with GetConfigForClient to capture SNI
+			tlsConn := tls.Server(conn, &tls.Config{ //nolint:gosec // test code, TLS version irrelevant
+				GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+					sniCh <- hello.ServerName
+					return nil, nil
+				},
+			})
+			// Trigger handshake (will fail, but we only need the ClientHello)
+			_ = tlsConn.Handshake()
+		}()
+
+		testH := &HTTP{
+			Dialer:     &net.Dialer{Timeout: defaultDialerTimeout},
+			Addr:       listener.Addr().String(),
+			HTTPS:      true,
+			Insecure:   true,
+			ServerName: "proxy.example.com",
+		}
+		conn, _ := testH.dial()
+		if conn != nil {
+			// Trigger TLS handshake
+			_ = conn.(*tls.Conn).Handshake()
+			_ = conn.Close()
+		}
+
+		sni := <-sniCh
+		assert.Equal(t, "proxy.example.com", sni, "TLS SNI should be hostname without port")
+	})
 }
 
 func TestHTTPRequestFailed(t *testing.T) {
