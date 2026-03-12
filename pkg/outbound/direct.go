@@ -20,6 +20,7 @@ const (
 	DirectMode4                      // Use IPv4 only, fail if not available
 
 	defaultDialerTimeout = 10 * time.Second
+	defaultTCPKeepalive  = 60 * time.Second
 )
 
 const (
@@ -44,6 +45,10 @@ type Direct struct {
 	DeviceName string
 	BindIP4    net.IP
 	BindIP6    net.IP
+
+	// TCPKeepalive is the keepalive interval for TCP connections.
+	// Negative value disables keepalive.
+	TCPKeepalive time.Duration
 }
 
 // DirectOptions configures a Direct outbound.
@@ -55,6 +60,30 @@ type DirectOptions struct {
 	BindIP6    net.IP
 
 	FastOpen bool
+
+	// TCPNoDelay controls TCP_NODELAY. nil defaults to true (Go default).
+	TCPNoDelay *bool
+
+	// TCPKeepaliveIntvl is the TCP keepalive interval.
+	// 0 means use default (60s), negative disables keepalive.
+	TCPKeepaliveIntvl time.Duration
+}
+
+// wrapDialNoDelay wraps a dial function to set TCP_NODELAY on the resulting connection.
+func wrapDialNoDelay(dialFn func(network, address string) (net.Conn, error), nodelay bool) func(network, address string) (net.Conn, error) {
+	return func(network, address string) (net.Conn, error) {
+		conn, err := dialFn(network, address)
+		if err != nil {
+			return nil, err
+		}
+		if tc, ok := conn.(*net.TCPConn); ok {
+			if err := tc.SetNoDelay(nodelay); err != nil {
+				_ = conn.Close()
+				return nil, err
+			}
+		}
+		return conn, nil
+	}
 }
 
 type noAddressError struct {
@@ -97,8 +126,15 @@ func (e resolveError) Unwrap() error {
 
 // NewDirectWithOptions creates a new Direct outbound with the given options.
 func NewDirectWithOptions(opts DirectOptions) (Outbound, error) {
+	// Resolve keepalive: 0 means default (60s), negative disables
+	keepalive := opts.TCPKeepaliveIntvl
+	if keepalive == 0 {
+		keepalive = defaultTCPKeepalive
+	}
+
 	dialer4 := &net.Dialer{
-		Timeout: defaultDialerTimeout,
+		Timeout:   defaultDialerTimeout,
+		KeepAlive: keepalive,
 	}
 	if opts.BindIP4 != nil {
 		if opts.BindIP4.To4() == nil {
@@ -109,7 +145,8 @@ func NewDirectWithOptions(opts DirectOptions) (Outbound, error) {
 		}
 	}
 	dialer6 := &net.Dialer{
-		Timeout: defaultDialerTimeout,
+		Timeout:   defaultDialerTimeout,
+		KeepAlive: keepalive,
 	}
 	if opts.BindIP6 != nil {
 		if opts.BindIP6.To4() != nil {
@@ -119,6 +156,7 @@ func NewDirectWithOptions(opts DirectOptions) (Outbound, error) {
 			IP: opts.BindIP6,
 		}
 	}
+
 	if opts.DeviceName != "" {
 		err := dialerBindToDevice(dialer4, opts.DeviceName)
 		if err != nil {
@@ -137,13 +175,21 @@ func NewDirectWithOptions(opts DirectOptions) (Outbound, error) {
 		dialFunc6 = newFastOpenDialer(dialer6).Dial
 	}
 
+	// Wrap dial functions to disable TCP_NODELAY after connection.
+	// Go enables TCP_NODELAY by default; we must set it post-dial.
+	if opts.TCPNoDelay != nil && !*opts.TCPNoDelay {
+		dialFunc4 = wrapDialNoDelay(dialFunc4, false)
+		dialFunc6 = wrapDialNoDelay(dialFunc6, false)
+	}
+
 	return &Direct{
-		Mode:       opts.Mode,
-		DialFunc4:  dialFunc4,
-		DialFunc6:  dialFunc6,
-		DeviceName: opts.DeviceName,
-		BindIP4:    opts.BindIP4,
-		BindIP6:    opts.BindIP6,
+		Mode:         opts.Mode,
+		DialFunc4:    dialFunc4,
+		DialFunc6:    dialFunc6,
+		DeviceName:   opts.DeviceName,
+		BindIP4:      opts.BindIP4,
+		BindIP6:      opts.BindIP6,
+		TCPKeepalive: keepalive,
 	}, nil
 }
 
